@@ -1,0 +1,6 @@
+/target
+kcov*
+**/*.swp
+**/*.rs.bk
+tags
+**/*.rustfmt

@@ -1,0 +1,27 @@
+[package]
+name = "gcode"
+version = "0.1.0"
+authors = ["Wilfried Chauveau <wilfried.chauveau@ithinuel.me>"]
+license = "MIT License"
+edition = "2018"
+# documentation = "..."
+# homepage = "..."
+repository = "https://github.com/ithinuel/gcode-rs"
+
+[features]
+default = ["parse-expressions", "parse-parameters", "parse-comments"]
+no_std = []
+parse-expressions = []
+parse-parameters = []
+parse-comments = []
+# extended:
+# Support for 3d printer flavor
+# - no word restriction
+# - semi-colon comments
+extended = []
+
+
+# [dependencies.nom]
+# version = "^4"
+# default-features = false
+# features = []
