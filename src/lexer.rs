@@ -17,8 +17,12 @@ impl IsValidWordChar for char {
 #[cfg(not(feature = "extended"))]
 impl IsValidWordChar for char {
     fn is_valid_word_char(&self) -> bool {
-        self.is_ascii_alphabetic() && !"eouvw".contains(*self)
+        self.is_ascii_alphabetic() && !find_in_str("eouvw", *self)
     }
+}
+
+fn find_in_str(input: &str, needle: char) -> bool {
+    input.chars().any(|a| a == needle)
 }
 
 #[cfg(feature = "parse-expressions")]
@@ -336,7 +340,7 @@ where
                             self.state = State::Idle;
                             return Some(Ok(Token::Comment));
                         }
-                        c if "(\r\n".contains(c) => {
+                        c if find_in_str("(\r\n", c) => {
                             self.state = State::Idle;
                             return Some(self.unexpected_char(c));
                         }
@@ -351,7 +355,7 @@ where
                             self.state = State::Idle;
                             return Some(Ok(Token::Comment(msg)));
                         }
-                        c if !"(\r\n".contains(c) => {
+                        c if !find_in_str("(\r\n", c) => {
                             s.push(c);
                         }
                         c => {
