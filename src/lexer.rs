@@ -421,6 +421,8 @@ mod test {
                 Ok(Token::Minus),
                 #[cfg(feature = "parse-comments")]
                 Ok(Token::Comment(" this is a comment ".to_string())),
+                #[cfg(not(feature = "parse-comments"))]
+                Ok(Token::Comment),
                 Ok(Token::Dot),
                 Ok(Token::Number {
                     value: 32,
@@ -478,6 +480,8 @@ mod test {
                 &[
                     #[cfg(feature = "parse-comments")]
                     Ok(Token::Comment(" this is another comment".to_string())),
+                    #[cfg(not(feature = "parse-comments"))]
+                    Ok(Token::Comment),
                     Ok(Token::EndOfLine)
                 ]
             );

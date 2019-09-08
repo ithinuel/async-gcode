@@ -1,18 +1,23 @@
 //! This crate implements a GCode (RS-274) parser.
-//! The default dialect is taken from NIST's [RS274/NGC interpreter version 3]( https://www.nist.gov/publications/nist-rs274ngc-interpreter-version-3?pub_id=823374).
+//! The default dialect is taken from NIST's [RS274/NGC interpreter version 3](https://www.nist.gov/publications/nist-rs274ngc-interpreter-version-3?pub_id=823374).
 //!
 //! It might be interesting to have a look at ISO 6983 and/or ISO 14649.
 #![cfg_attr(feature = "no_std", no_std)]
 
-#[cfg(feature = "no_std")]
+#[cfg(all(
+    feature = "no_std",
+    any(feature = "parse-parameters", feature = "parse-comments")
+))]
 extern crate alloc;
 
 #[cfg(feature = "parse-expressions")]
 mod expressions;
-mod lexer;
-mod parser;
+
 #[cfg(feature = "no_std")]
 mod std;
+
+mod lexer;
+mod parser;
 mod utils;
 
 #[cfg(all(

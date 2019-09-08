@@ -1,19 +1,23 @@
-#[cfg(feature = "parse-expressions")]
-use crate::expressions::Expression;
-#[cfg(feature = "parse-expressions")]
-use crate::lexer::Operator;
+use crate::std::mem;
+use crate::utils::Stack;
+use crate::{lexer, Error, GCode, RealValue, Token};
+
 #[cfg(all(
     feature = "no_std",
     any(feature = "parse-expressions", feature = "parse-parameters")
 ))]
 use crate::std::boxed::Box;
+
+#[cfg(feature = "parse-expressions")]
+use crate::expressions::Expression;
+#[cfg(feature = "parse-expressions")]
+use crate::lexer::Operator;
 #[cfg(feature = "parse-expressions")]
 use crate::std::convert::TryFrom;
-use crate::std::mem;
+#[cfg(feature = "parse-expressions")]
 use crate::std::vec::Vec;
 #[cfg(feature = "parse-expressions")]
 use crate::utils::Either;
-use crate::{lexer, Error, GCode, RealValue, Token};
 
 #[cfg(feature = "parse-expressions")]
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -119,7 +123,7 @@ enum IntermediateState {
 pub struct Parser<T> {
     lexer: lexer::Lexer<T>,
     state: State,
-    stack: Vec<IntermediateState>,
+    stack: Stack<IntermediateState>,
     look_ahead: Option<Token>,
 }
 
@@ -128,7 +132,7 @@ impl<T> Parser<T> {
         Self {
             lexer: lexer::Lexer::new(input),
             state: State::StartOfLine,
-            stack: Vec::new(),
+            stack: Stack::new(),
             look_ahead: None,
         }
     }
