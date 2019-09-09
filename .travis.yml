@@ -33,6 +33,7 @@ before_script:
   - cargo install cargo-update || echo "cargo-update already installed"
   - cargo install cargo-travis || echo "cargo-travis already installed"
   - cargo install-update -a # update outdated cached binaries
+  - rustup target add thumbv7m-none-eabi
   - if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then rustup component add clippy-preview --toolchain=nightly || true; fi
   - |
       if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == "stable" ]]; then
@@ -42,8 +43,15 @@ before_script:
 
 # The main build
 script:
-  - cargo build
-  - cargo test
+  - cargo test --no-default-features
+  - cargo test --no-default-features --features extended
+  - cargo test --no-default-features --features parse-comments
+  - cargo test --no-default-features --features parse-comments,extended
+  - cargo test --no-default-features --features parse-parameters
+  - cargo test --no-default-features --features parse-expressions
+  - cargo test --no-default-features --features parse-expressions,parse-parameters
+  - cargo test --features extended
+  - cargo build --release --features no_std,extended --target thumbv7m-none-eabi
   - if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then cargo clippy || true; fi
   - |
       if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == "stable" ]]; then
