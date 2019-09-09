@@ -133,7 +133,7 @@ pub struct Lexer<T> {
 impl<T> Lexer<T> {
     pub fn new(input: T) -> Self {
         Self {
-            input: input,
+            input,
             state: State::Idle,
             look_ahead: None,
         }
@@ -160,11 +160,11 @@ where
         let mut c = match self
             .look_ahead
             .take()
-            .map(|c| Ok(c))
+            .map(Ok)
             .or_else(|| self.input.next())
         {
             Some(Ok(c)) => c.to_ascii_lowercase(),
-            Some(Err(e)) => return Some(Err(e.into())),
+            Some(Err(e)) => return Some(Err(e)),
             None => return None,
         };
         loop {
@@ -189,7 +189,7 @@ where
                             match self.input.next() {
                                 Some(Err(e)) => {
                                     self.look_ahead = Some(c);
-                                    return Some(Err(e.into()));
+                                    return Some(Err(e));
                                 }
                                 None => {
                                     self.look_ahead = Some(c);
@@ -268,12 +268,12 @@ where
                         *factor *= 10;
                     }
                     None => {
-                        let (n, factor) = (*n, *factor);
+                        let (value, factor) = (*n, *factor);
                         self.look_ahead = Some(c);
                         self.state = State::Idle;
                         return Some(Ok(Token::Number {
-                            value: n,
-                            factor: factor,
+                            value,
+                            factor,
                         }));
                     }
                 },
@@ -392,7 +392,7 @@ where
             };
             c = match self.input.next() {
                 Some(Ok(c)) => c.to_ascii_lowercase(),
-                Some(Err(e)) => return Some(Err(e.into())),
+                Some(Err(e)) => return Some(Err(e)),
                 None => return None,
             };
         }

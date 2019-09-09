@@ -228,7 +228,7 @@ impl<T> Parser<T> {
                 State::LineNumber => {
                     return if let Token::Number {
                         value: v,
-                        factor: _,
+                        ..
                     } = tok
                     {
                         self.state = State::Segments;
@@ -329,14 +329,14 @@ impl<T> Parser<T> {
                             match tok {
                                 Token::Number { value: integer, .. } => {
                                     self.state = State::RealNumber(RealNumber::Dot {
-                                        negative: negative,
-                                        integer: integer,
+                                        negative,
+                                        integer,
                                         optional: true,
                                     })
                                 }
                                 Token::Dot => {
                                     self.state = State::RealNumber(RealNumber::Decimal {
-                                        negative: negative,
+                                        negative,
                                         integer: 0,
                                         optional: false,
                                     })
@@ -352,9 +352,9 @@ impl<T> Parser<T> {
                         } => {
                             if let Token::Dot = tok {
                                 self.state = State::RealNumber(RealNumber::Decimal {
-                                    negative: negative,
-                                    integer: integer,
-                                    optional: optional,
+                                    negative,
+                                    integer,
+                                    optional,
                                 });
                                 break;
                             } else if optional {
@@ -405,7 +405,7 @@ impl<T> Parser<T> {
                                 Ok(exp) => {
                                     return self.pop_state(RealValue::Expression(Box::new(exp)))
                                 }
-                                Err(_) => {
+                                _ => {
                                     unimplemented!();
                                 }
                             }
@@ -531,7 +531,7 @@ where
             let tok = match self
                 .look_ahead
                 .take()
-                .map(|v| Ok(v))
+                .map(Ok)
                 .or_else(|| self.lexer.next())
             {
                 Some(Ok(t)) => t,
