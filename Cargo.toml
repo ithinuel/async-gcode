@@ -20,6 +20,10 @@ parse-comments = []
 # - semi-colon comments
 extended = []
 
+[badges]
+travis-ci = { repository = "ithinuel/gcode-rs", branch = "no_std" }
+codecov = { repository = "ithinuel/gcode-rs", branch = "no_std", service = "github" }
+maintenance = { status = "experimental" }
 
 # [dependencies.nom]
 # version = "^4"

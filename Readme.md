@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/ithinuel/gcode-rs.svg?branch=no_std)](https://travis-ci.org/ithinuel/gcode-rs)[![codecov](https://codecov.io/gh/ithinuel/gcode-rs/branch/no_std/graph/badge.svg)](https://codecov.io/gh/ithinuel/gcode-rs)
+
 # GCode Parser
 
 This crate aims at providing a gcode parser to the rusty printer project (and other if it can fit).
