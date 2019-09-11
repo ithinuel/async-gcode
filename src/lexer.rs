@@ -157,12 +157,7 @@ where
     type Item = Result<Token, E>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut c = match self
-            .look_ahead
-            .take()
-            .map(Ok)
-            .or_else(|| self.input.next())
-        {
+        let mut c = match self.look_ahead.take().map(Ok).or_else(|| self.input.next()) {
             Some(Ok(c)) => c.to_ascii_lowercase(),
             Some(Err(e)) => return Some(Err(e)),
             None => return None,
@@ -271,10 +266,7 @@ where
                         let (value, factor) = (*n, *factor);
                         self.look_ahead = Some(c);
                         self.state = State::Idle;
-                        return Some(Ok(Token::Number {
-                            value,
-                            factor,
-                        }));
+                        return Some(Ok(Token::Number { value, factor }));
                     }
                 },
                 #[cfg(feature = "parse-expressions")]
@@ -550,7 +542,7 @@ mod test {
         let tokens: Vec<_> = Lexer::new(
             "E\ne\nO\no\nU\nu\nV\nv\nW\nw\n"
                 .chars()
-                .map(|v| Result::<char, Error>::Ok(v)),
+                .map(Result::<char, Error>::Ok),
         )
         .collect();
         assert_eq!(
@@ -585,7 +577,7 @@ mod test {
     fn parse_unary() {
         let unary_combos = "absandacosasinatancosxorexpfixfupmodlnorroundsinsqrttan";
         let tokens: Vec<_> =
-            Lexer::new(unary_combos.chars().map(|v| Result::<char, Error>::Ok(v))).collect();
+            Lexer::new(unary_combos.chars().map(Result::<char, Error>::Ok)).collect();
         assert_eq!(
             tokens,
             &[

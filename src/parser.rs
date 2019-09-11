@@ -226,11 +226,7 @@ impl<T> Parser<T> {
                  *      _ => unexpected token
                  */
                 State::LineNumber => {
-                    return if let Token::Number {
-                        value: v,
-                        ..
-                    } = tok
-                    {
+                    return if let Token::Number { value: v, .. } = tok {
                         self.state = State::Segments;
                         Some(Ok(GCode::LineNumber(v)))
                     } else {
@@ -528,12 +524,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let tok = match self
-                .look_ahead
-                .take()
-                .map(Ok)
-                .or_else(|| self.lexer.next())
-            {
+            let tok = match self.look_ahead.take().map(Ok).or_else(|| self.lexer.next()) {
                 Some(Ok(t)) => t,
                 Some(Err(e)) => return Some(Err(e)),
                 None => return None,
@@ -557,13 +548,13 @@ mod test {
 
     #[test]
     fn empty_lines_are_ignored() {
-        let input = "\n\r\n".chars().map(|v| Result::<char, Error>::Ok(v));
+        let input = "\n\r\n".chars().map(Result::<char, Error>::Ok);
         assert_eq!(Parser::new(input).collect::<Vec<_>>(), &[]);
     }
 
     #[test]
     fn block_delete_emited_immediately() {
-        let input = "/".chars().map(|v| Result::<char, Error>::Ok(v));
+        let input = "/".chars().map(Result::<char, Error>::Ok);
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[Ok(GCode::BlockDelete)]
@@ -572,13 +563,13 @@ mod test {
 
     #[test]
     fn line_number() {
-        let input = "N23\n".chars().map(|v| Result::<char, Error>::Ok(v));
+        let input = "N23\n".chars().map(Result::<char, Error>::Ok);
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[Ok(GCode::LineNumber(23)), Ok(GCode::Execute)]
         );
 
-        let input = "N0023\n".chars().map(|v| Result::<char, Error>::Ok(v));
+        let input = "N0023\n".chars().map(Result::<char, Error>::Ok);
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[Ok(GCode::LineNumber(23)), Ok(GCode::Execute)]
@@ -587,7 +578,7 @@ mod test {
 
     #[test]
     fn incomplete_line_number() {
-        let input = "N\n".chars().map(|v| Result::<char, Error>::Ok(v));
+        let input = "N\n".chars().map(Result::<char, Error>::Ok);
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[Err(Error::UnexpectedToken(
@@ -602,7 +593,7 @@ mod test {
     fn well_formed_comments_are_ignored() {
         let input = "(Hello world ! This is a comment.)"
             .chars()
-            .map(|v| Result::<char, Error>::Ok(v));
+            .map(Result::<char, Error>::Ok);
 
         assert_eq!(Parser::new(input).collect::<Vec<_>>(), &[]);
     }
@@ -612,7 +603,7 @@ mod test {
     fn well_formed_comments_are_emited() {
         let input = "(Hello world ! This is a comment.)"
             .chars()
-            .map(|v| Result::<char, Error>::Ok(v));
+            .map(Result::<char, Error>::Ok);
 
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
@@ -624,18 +615,14 @@ mod test {
 
     #[test]
     fn open_parenthesis_are_not_allowed_inside_comments() {
-        let input = "(Hello world ! ("
-            .chars()
-            .map(|v| Result::<char, Error>::Ok(v));
+        let input = "(Hello world ! (".chars().map(Result::<char, Error>::Ok);
 
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[Err(Error::UnexpectedChar(LexerState::Idle, '(')),]
         );
 
-        let input = "(Hello world !\n"
-            .chars()
-            .map(|v| Result::<char, Error>::Ok(v));
+        let input = "(Hello world !\n".chars().map(Result::<char, Error>::Ok);
 
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
@@ -647,7 +634,7 @@ mod test {
     fn word_with_number() {
         let input = "G21H21.I21.098J-21K-21.L-21.098M+21N+21.P+21.098Q.098R-.098S+.098\n"
             .chars()
-            .map(|v| Result::<char, Error>::Ok(v));
+            .map(Result::<char, Error>::Ok);
 
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
@@ -708,7 +695,7 @@ mod test {
     #[test]
     #[cfg(feature = "parse-parameters")]
     fn parse_param_get() {
-        let input = "G#-21.098\n".chars().map(|v| Result::<char, Error>::Ok(v));
+        let input = "G#-21.098\n".chars().map(Result::<char, Error>::Ok);
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[
@@ -726,9 +713,7 @@ mod test {
     #[test]
     #[cfg(feature = "parse-parameters")]
     fn parse_param_set() {
-        let input = "#23.4=#-75.8\n"
-            .chars()
-            .map(|v| Result::<char, Error>::Ok(v));
+        let input = "#23.4=#-75.8\n".chars().map(Result::<char, Error>::Ok);
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[
