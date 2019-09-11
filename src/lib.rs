@@ -48,6 +48,8 @@ type RealNumber = f32;
 
 #[derive(Debug, PartialEq)]
 pub enum RealValue {
+    #[cfg(feature = "optional-value")]
+    None,
     RealNumber(RealNumber),
     #[cfg(feature = "parse-parameters")]
     ParameterGet(Box<RealValue>),

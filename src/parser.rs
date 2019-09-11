@@ -77,7 +77,7 @@ pub enum State {
     LineNumberOrSegments,
     LineNumber,
     Segments,
-    RealValue,
+    RealValue(bool),
     RealNumber(RealNumber),
     #[cfg(feature = "parse-parameters")]
     ParameterSet(RealValue),
@@ -248,12 +248,12 @@ impl<T> Parser<T> {
                     #[cfg(feature = "parse-parameters")]
                     Token::ParameterSign => {
                         self.stack.push(IntermediateState::ParameterSetId);
-                        self.state = State::RealValue;
+                        self.state = State::RealValue(true);
                         break;
                     }
                     Token::Char(c) => {
                         self.stack.push(IntermediateState::Word(c));
-                        self.state = State::RealValue;
+                        self.state = State::RealValue(false);
                         break;
                     }
                     Token::EndOfLine => {
@@ -269,7 +269,7 @@ impl<T> Parser<T> {
                  *      String => // expect a unary combo
                  *      _ => reset stack, unexpected token
                  */
-                State::RealValue => {
+                State::RealValue(_mandatory) => {
                     match tok {
                         Token::Plus => {
                             self.state = State::RealNumber(RealNumber::IntegerOrDot(false))
@@ -294,27 +294,38 @@ impl<T> Parser<T> {
                         #[cfg(feature = "parse-parameters")]
                         Token::ParameterSign => {
                             self.stack.push(IntermediateState::ParameterGet);
+                            self.state = State::RealValue(true);
                         }
                         #[cfg(feature = "parse-expressions")]
                         Token::LeftBracket => {
                             self.stack.push(IntermediateState::Expression(Vec::new()));
+                            self.state = State::RealValue(true);
                         }
                         #[cfg(feature = "parse-expressions")]
                         Token::Operator(op) => {
                             if let Operator::ATan = op {
                                 self.state = State::ATanComboStart;
-                                break;
                             } else {
                                 match UnaryOperator::try_from(op) {
                                     Ok(unop) => {
                                         self.state = State::UnaryExpressionStart(unop);
-                                        break;
                                     }
                                     Err(op) => return self.unexpected_token(Token::Operator(op)),
                                 }
                             }
+                            break;
                         }
+                        #[cfg(not(feature = "optional-value"))]
                         tok => return self.unexpected_token(tok),
+                        #[cfg(feature = "optional-value")]
+                        tok => {
+                            if _mandatory {
+                                return self.unexpected_token(tok);
+                            } else {
+                                self.look_ahead = Some(tok);
+                                return self.pop_state(RealValue::None);
+                            }
+                        }
                     }
                     break;
                 }
@@ -388,7 +399,7 @@ impl<T> Parser<T> {
                 State::ParameterSet(ref mut id) => {
                     let id = mem::replace(id, RealValue::default());
                     self.stack.push(IntermediateState::ParameterSetValue(id));
-                    self.state = State::RealValue;
+                    self.state = State::RealValue(true);
                     break;
                 }
                 #[cfg(feature = "parse-expressions")]
@@ -409,7 +420,7 @@ impl<T> Parser<T> {
                         Token::Plus | Token::Minus | Token::Times | Token::Slash | Token::Power => {
                             vec.push(Either::Right(tok));
                             self.stack.push(IntermediateState::Expression(vec));
-                            self.state = State::RealValue;
+                            self.state = State::RealValue(true);
                             break;
                         }
                         _ => {
@@ -421,7 +432,7 @@ impl<T> Parser<T> {
                 State::UnaryExpressionStart(unop) => {
                     if let Token::LeftBracket = tok {
                         self.stack.push(IntermediateState::Unary(unop));
-                        self.state = State::RealValue;
+                        self.state = State::RealValue(true);
                         break;
                     } else {
                         return self.unexpected_token(tok);
@@ -453,7 +464,7 @@ impl<T> Parser<T> {
                 State::ATanComboStart => {
                     if let Token::LeftBracket = tok {
                         self.stack.push(IntermediateState::ATanComboFirst);
-                        self.state = State::RealValue;
+                        self.state = State::RealValue(true);
                         break;
                     } else {
                         return self.unexpected_token(tok);
@@ -484,7 +495,7 @@ impl<T> Parser<T> {
                     let atan = mem::replace(atan, RealValue::default());
                     if let Token::LeftBracket = tok {
                         self.stack.push(IntermediateState::ATanComboSecond(atan));
-                        self.state = State::RealValue;
+                        self.state = State::RealValue(true);
                         break;
                     } else {
                         return self.unexpected_token(tok);
@@ -818,6 +829,43 @@ mod test {
                     Ok(GCode::Execute)
                 ]
             )
+        }
+    }
+
+    #[cfg(feature = "optional-value")]
+    #[test]
+    fn code_may_not_have_a_value() {
+        let input = "G75 Z T48 S P.3\n".chars().map(Result::<char, Error>::Ok);
+        assert_eq!(
+            Parser::new(input).collect::<Vec<_>>(),
+            &[
+                Ok(GCode::Word(
+                    'g',
+                    RealValue::build_real_number(false, 75, 0, 10),
+                )),
+                Ok(GCode::Word('z', RealValue::None,)),
+                Ok(GCode::Word(
+                    't',
+                    RealValue::build_real_number(false, 48, 0, 10),
+                )),
+                Ok(GCode::Word('s', RealValue::None,)),
+                Ok(GCode::Word(
+                    'p',
+                    RealValue::build_real_number(false, 0, 3, 10),
+                )),
+                Ok(GCode::Execute)
+            ]
+        );
+        #[cfg(feature = "parse-parameters")]
+        {
+            let input = "G#\n".chars().map(Result::<char, Error>::Ok);
+            assert_eq!(
+                Parser::new(input).collect::<Vec<_>>(),
+                &[Err(Error::UnexpectedToken(
+                    State::RealValue(true),
+                    Token::EndOfLine
+                ))]
+            );
         }
     }
 }
