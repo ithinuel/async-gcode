@@ -104,3 +104,9 @@ fn main() -> ! {
 - `parse-parameters` : Enables parsing of parameters. This feature requires `alloc`.
 
 By default all three `parse-*` features are enabled.
+
+
+## Known issues :
+- with parse-expressions & optional-values:
+  unary combo may be detected on valid series of value-less words.
+  Workaround: use spaces to disambiguate series of value-less words.

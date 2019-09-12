@@ -5,24 +5,21 @@ use crate::std::string::String;
 use crate::utils::Either;
 use crate::Error;
 
-trait IsValidWordChar {
-    fn is_valid_word_char(&self) -> bool;
-}
-#[cfg(feature = "extended")]
-impl IsValidWordChar for char {
-    fn is_valid_word_char(&self) -> bool {
-        self.is_ascii_alphabetic()
-    }
-}
-#[cfg(not(feature = "extended"))]
-impl IsValidWordChar for char {
-    fn is_valid_word_char(&self) -> bool {
-        self.is_ascii_alphabetic() && !find_in_str("eouvw", *self)
-    }
+fn find_in_array(input: &[char], needle: char) -> bool {
+    input.iter().any(|a| *a == needle)
 }
 
-fn find_in_str(input: &str, needle: char) -> bool {
-    input.chars().any(|a| a == needle)
+#[cfg(feature = "extended")]
+fn is_valid_word_char(c: char) -> bool {
+    c.is_ascii_alphabetic()
+}
+#[cfg(not(feature = "extended"))]
+fn is_valid_word_char(c: char) -> bool {
+    c.is_ascii_alphabetic() && !find_in_array(&['e', 'o', 'u', 'v', 'w'], c)
+}
+
+fn is_valid_comment_char(c: char) -> bool {
+    !find_in_array(&['(', '\r', '\n'], c)
 }
 
 #[cfg(feature = "parse-expressions")]
@@ -148,6 +145,212 @@ where
         let s = mem::replace(&mut self.state, State::ErrorRecovery);
         Err(Error::UnexpectedChar(s, c).into())
     }
+
+    fn process_char(&mut self, c: char) -> Option<Result<Token, E>> {
+        let (c, original) = (c.to_ascii_lowercase(), c);
+
+        match self.state {
+            State::Idle => match c {
+                '\t' | ' ' => {}
+                #[cfg(feature = "parse-comments")]
+                '(' => self.state = State::Comment(String::new()),
+                #[cfg(not(feature = "parse-comments"))]
+                '(' => self.state = State::Comment,
+                #[cfg(all(feature = "parse-comments", feature = "extended"))]
+                ';' => self.state = State::SemiColonComment(String::new()),
+                #[cfg(all(not(feature = "parse-comments"), feature = "extended"))]
+                ';' => self.state = State::SemiColonComment,
+                #[cfg(feature = "parse-expressions")]
+                '*' => self.state = State::TimesOrPower,
+                _ => {
+                    if let Some(v) = c.to_digit(10) {
+                        self.state = State::Number(v, 10)
+                    } else if c.is_ascii_alphabetic() {
+                        #[cfg(feature = "parse-expressions")]
+                        match self.input.next() {
+                            Some(Err(e)) => {
+                                self.look_ahead = Some(c);
+                                return Some(Err(e));
+                            }
+                            None => {
+                                self.look_ahead = Some(c);
+                                return None;
+                            }
+                            Some(Ok(d)) => {
+                                self.state = State::Operator(match (c, d.to_ascii_lowercase()) {
+                                    // Three or more chars unaries
+                                    ('a', 'b') => OperatorState::Abs,
+                                    ('a', 'n') => OperatorState::And,
+                                    ('a', 'c') => OperatorState::ACosExpectO,
+                                    ('a', 's') => OperatorState::ASinExpectI,
+                                    ('a', 't') => OperatorState::ATanExpectA,
+                                    ('c', 'o') => OperatorState::Cos,
+                                    ('e', 'x') => OperatorState::Pow,
+                                    ('f', 'i') => OperatorState::Fix,
+                                    ('f', 'u') => OperatorState::Fup,
+                                    ('r', 'o') => OperatorState::RoundExpectU,
+                                    ('s', 'i') => OperatorState::Sin,
+                                    ('s', 'q') => OperatorState::SqrtExpectR,
+                                    ('t', 'a') => OperatorState::Tan,
+                                    ('x', 'o') => OperatorState::Xor,
+                                    ('m', 'o') => OperatorState::Mod,
+                                    // Two chars unaries
+                                    ('l', 'n') => {
+                                        self.state = State::Idle;
+                                        return Some(Ok(Token::Operator(Operator::Ln)));
+                                    }
+                                    ('o', 'r') => {
+                                        self.state = State::Idle;
+                                        return Some(Ok(Token::Operator(Operator::Or)));
+                                    }
+                                    // default
+                                    (_, _) => {
+                                        self.look_ahead = Some(d);
+                                        return if is_valid_word_char(c) {
+                                            Some(Ok(Token::Char(c)))
+                                        } else {
+                                            Some(self.unexpected_char(original))
+                                        };
+                                    }
+                                });
+                            }
+                        };
+
+                        #[cfg(not(feature = "parse-expressions"))]
+                        return if is_valid_word_char(c) {
+                            Some(Ok(Token::Char(c)))
+                        } else {
+                            Some(self.unexpected_char(original))
+                        };
+                    } else {
+                        return Some(match c {
+                            '/' => Ok(Token::Slash),
+                            '.' => Ok(Token::Dot),
+                            '+' => Ok(Token::Plus),
+                            '-' => Ok(Token::Minus),
+                            '\r' | '\n' => Ok(Token::EndOfLine),
+                            #[cfg(feature = "parse-expressions")]
+                            '[' => Ok(Token::LeftBracket),
+                            #[cfg(feature = "parse-expressions")]
+                            ']' => Ok(Token::RightBracket),
+                            #[cfg(feature = "parse-parameters")]
+                            '#' => Ok(Token::ParameterSign),
+                            #[cfg(feature = "parse-parameters")]
+                            '=' => Ok(Token::Equal),
+                            _ => self.unexpected_char(original),
+                        });
+                    }
+                }
+            },
+            State::Number(ref mut n, ref mut factor) => match c.to_digit(10) {
+                Some(v) => {
+                    *n = *n * 10 + v;
+                    *factor *= 10;
+                }
+                None => {
+                    let (value, factor) = (*n, *factor);
+                    self.look_ahead = Some(c);
+                    self.state = State::Idle;
+                    return Some(Ok(Token::Number { value, factor }));
+                }
+            },
+            #[cfg(feature = "parse-expressions")]
+            State::TimesOrPower => {
+                self.state = State::Idle;
+                return if c == '*' {
+                    Some(Ok(Token::Power))
+                } else {
+                    self.look_ahead = Some(c);
+                    Some(Ok(Token::Times))
+                };
+            }
+            #[cfg(feature = "parse-expressions")]
+            State::Operator(ref mut us) => {
+                let out = match (&us, &c) {
+                    (OperatorState::Abs, 's') => Either::Left(Operator::Abs),
+                    (OperatorState::And, 'd') => Either::Left(Operator::And),
+                    (OperatorState::ACosExpectO, 'o') => Either::Right(OperatorState::ACosExpectS),
+                    (OperatorState::ACosExpectS, 's') => Either::Left(Operator::ACos),
+                    (OperatorState::ASinExpectI, 'i') => Either::Right(OperatorState::ASinExpectN),
+                    (OperatorState::ASinExpectN, 'n') => Either::Left(Operator::ASin),
+                    (OperatorState::ATanExpectA, 'a') => Either::Right(OperatorState::ATanExpectN),
+                    (OperatorState::ATanExpectN, 'n') => Either::Left(Operator::ATan),
+                    (OperatorState::Cos, 's') => Either::Left(Operator::Cos),
+                    (OperatorState::Pow, 'p') => Either::Left(Operator::Pow),
+                    (OperatorState::Fix, 'x') => Either::Left(Operator::Fix),
+                    (OperatorState::Fup, 'p') => Either::Left(Operator::Fup),
+                    (OperatorState::Mod, 'd') => Either::Left(Operator::Mod),
+                    (OperatorState::RoundExpectU, 'u') => {
+                        Either::Right(OperatorState::RoundExpectN)
+                    }
+                    (OperatorState::RoundExpectN, 'n') => {
+                        Either::Right(OperatorState::RoundExpectD)
+                    }
+                    (OperatorState::RoundExpectD, 'd') => Either::Left(Operator::Round),
+                    (OperatorState::Sin, 'n') => Either::Left(Operator::Sin),
+                    (OperatorState::SqrtExpectR, 'r') => Either::Right(OperatorState::SqrtExpectT),
+                    (OperatorState::SqrtExpectT, 't') => Either::Left(Operator::Sqrt),
+                    (OperatorState::Tan, 'n') => Either::Left(Operator::Tan),
+                    (OperatorState::Xor, 'r') => Either::Left(Operator::Xor),
+                    (_, _) => return Some(self.unexpected_char(original)),
+                };
+                match out {
+                    Either::Left(left) => {
+                        self.state = State::Idle;
+                        return Some(Ok(Token::Operator(left)));
+                    }
+                    Either::Right(right) => *us = right,
+                }
+            }
+            #[cfg(not(feature = "parse-comments"))]
+            State::Comment => {
+                if c == ')' {
+                    self.state = State::Idle;
+                    return Some(Ok(Token::Comment));
+                } else if !is_valid_comment_char(original) {
+                    return Some(self.unexpected_char(original));
+                }
+            }
+            #[cfg(feature = "parse-comments")]
+            State::Comment(ref mut s) => {
+                if c == ')' {
+                    let msg = mem::replace(s, String::new());
+                    self.state = State::Idle;
+                    return Some(Ok(Token::Comment(msg)));
+                } else if is_valid_comment_char(original) {
+                    s.push(original);
+                } else {
+                    return Some(self.unexpected_char(original));
+                }
+            }
+            #[cfg(all(not(feature = "parse-comments"), feature = "extended"))]
+            State::SemiColonComment => {
+                if c == '\r' || c == '\n' {
+                    self.state = State::Idle;
+                    self.look_ahead = Some(c);
+                    return Some(Ok(Token::Comment));
+                }
+            }
+            #[cfg(all(feature = "parse-comments", feature = "extended"))]
+            State::SemiColonComment(ref mut s) => {
+                if c == '\r' || c == '\n' {
+                    let msg = mem::replace(s, String::new());
+                    self.state = State::Idle;
+                    self.look_ahead = Some(c);
+                    return Some(Ok(Token::Comment(msg)));
+                } else {
+                    s.push(original)
+                }
+            }
+            State::ErrorRecovery => {
+                if c == '\r' || c == '\n' {
+                    self.state = State::Idle;
+                    return Some(Ok(Token::EndOfLine));
+                }
+            }
+        };
+        None
+    }
 }
 impl<T, E> Iterator for Lexer<T>
 where
@@ -158,232 +361,17 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut c = match self.look_ahead.take().map(Ok).or_else(|| self.input.next()) {
-            Some(Ok(c)) => c.to_ascii_lowercase(),
+            Some(Ok(c)) => c,
             Some(Err(e)) => return Some(Err(e)),
             None => return None,
         };
         loop {
-            match self.state {
-                State::Idle => match c {
-                    '\t' | ' ' => {}
-                    #[cfg(feature = "parse-comments")]
-                    '(' => self.state = State::Comment(String::new()),
-                    #[cfg(not(feature = "parse-comments"))]
-                    '(' => self.state = State::Comment,
-                    #[cfg(all(feature = "parse-comments", feature = "extended"))]
-                    ';' => self.state = State::SemiColonComment(String::new()),
-                    #[cfg(all(not(feature = "parse-comments"), feature = "extended"))]
-                    ';' => self.state = State::SemiColonComment,
-                    #[cfg(feature = "parse-expressions")]
-                    '*' => self.state = State::TimesOrPower,
-                    c => {
-                        if let Some(v) = c.to_digit(10) {
-                            self.state = State::Number(v, 10)
-                        } else if c.is_ascii_alphabetic() {
-                            #[cfg(feature = "parse-expressions")]
-                            match self.input.next() {
-                                Some(Err(e)) => {
-                                    self.look_ahead = Some(c);
-                                    return Some(Err(e));
-                                }
-                                None => {
-                                    self.look_ahead = Some(c);
-                                    return None;
-                                }
-                                Some(Ok(d)) => {
-                                    self.state =
-                                        State::Operator(match (c, d.to_ascii_lowercase()) {
-                                            // Three or more chars unaries
-                                            ('a', 'b') => OperatorState::Abs,
-                                            ('a', 'n') => OperatorState::And,
-                                            ('a', 'c') => OperatorState::ACosExpectO,
-                                            ('a', 's') => OperatorState::ASinExpectI,
-                                            ('a', 't') => OperatorState::ATanExpectA,
-                                            ('c', 'o') => OperatorState::Cos,
-                                            ('e', 'x') => OperatorState::Pow,
-                                            ('f', 'i') => OperatorState::Fix,
-                                            ('f', 'u') => OperatorState::Fup,
-                                            ('r', 'o') => OperatorState::RoundExpectU,
-                                            ('s', 'i') => OperatorState::Sin,
-                                            ('s', 'q') => OperatorState::SqrtExpectR,
-                                            ('t', 'a') => OperatorState::Tan,
-                                            ('x', 'o') => OperatorState::Xor,
-                                            ('m', 'o') => OperatorState::Mod,
-                                            // Two chars unaries
-                                            ('l', 'n') => {
-                                                self.state = State::Idle;
-                                                return Some(Ok(Token::Operator(Operator::Ln)));
-                                            }
-                                            ('o', 'r') => {
-                                                self.state = State::Idle;
-                                                return Some(Ok(Token::Operator(Operator::Or)));
-                                            }
-                                            // default
-                                            (c, d) => {
-                                                self.look_ahead = Some(d);
-                                                return if c.is_valid_word_char() {
-                                                    Some(Ok(Token::Char(c)))
-                                                } else {
-                                                    Some(self.unexpected_char(c))
-                                                };
-                                            }
-                                        });
-                                }
-                            };
-
-                            #[cfg(not(feature = "parse-expressions"))]
-                            return if c.is_valid_word_char() {
-                                Some(Ok(Token::Char(c)))
-                            } else {
-                                Some(self.unexpected_char(c))
-                            };
-                        } else {
-                            return Some(match c {
-                                '/' => Ok(Token::Slash),
-                                '.' => Ok(Token::Dot),
-                                '+' => Ok(Token::Plus),
-                                '-' => Ok(Token::Minus),
-                                '\r' | '\n' => Ok(Token::EndOfLine),
-                                #[cfg(feature = "parse-expressions")]
-                                '[' => Ok(Token::LeftBracket),
-                                #[cfg(feature = "parse-expressions")]
-                                ']' => Ok(Token::RightBracket),
-                                #[cfg(feature = "parse-parameters")]
-                                '#' => Ok(Token::ParameterSign),
-                                #[cfg(feature = "parse-parameters")]
-                                '=' => Ok(Token::Equal),
-                                c => self.unexpected_char(c),
-                            });
-                        }
-                    }
-                },
-                State::Number(ref mut n, ref mut factor) => match c.to_digit(10) {
-                    Some(v) => {
-                        *n = *n * 10 + v;
-                        *factor *= 10;
-                    }
-                    None => {
-                        let (value, factor) = (*n, *factor);
-                        self.look_ahead = Some(c);
-                        self.state = State::Idle;
-                        return Some(Ok(Token::Number { value, factor }));
-                    }
-                },
-                #[cfg(feature = "parse-expressions")]
-                State::TimesOrPower => {
-                    self.state = State::Idle;
-                    return if c == '*' {
-                        Some(Ok(Token::Power))
-                    } else {
-                        self.look_ahead = Some(c);
-                        Some(Ok(Token::Times))
-                    };
-                }
-                #[cfg(feature = "parse-expressions")]
-                State::Operator(ref mut us) => {
-                    let out = match (&us, &c) {
-                        (OperatorState::Abs, 's') => Either::Left(Operator::Abs),
-                        (OperatorState::And, 'd') => Either::Left(Operator::And),
-                        (OperatorState::ACosExpectO, 'o') => {
-                            Either::Right(OperatorState::ACosExpectS)
-                        }
-                        (OperatorState::ACosExpectS, 's') => Either::Left(Operator::ACos),
-                        (OperatorState::ASinExpectI, 'i') => {
-                            Either::Right(OperatorState::ASinExpectN)
-                        }
-                        (OperatorState::ASinExpectN, 'n') => Either::Left(Operator::ASin),
-                        (OperatorState::ATanExpectA, 'a') => {
-                            Either::Right(OperatorState::ATanExpectN)
-                        }
-                        (OperatorState::ATanExpectN, 'n') => Either::Left(Operator::ATan),
-                        (OperatorState::Cos, 's') => Either::Left(Operator::Cos),
-                        (OperatorState::Pow, 'p') => Either::Left(Operator::Pow),
-                        (OperatorState::Fix, 'x') => Either::Left(Operator::Fix),
-                        (OperatorState::Fup, 'p') => Either::Left(Operator::Fup),
-                        (OperatorState::Mod, 'd') => Either::Left(Operator::Mod),
-                        (OperatorState::RoundExpectU, 'u') => {
-                            Either::Right(OperatorState::RoundExpectN)
-                        }
-                        (OperatorState::RoundExpectN, 'n') => {
-                            Either::Right(OperatorState::RoundExpectD)
-                        }
-                        (OperatorState::RoundExpectD, 'd') => Either::Left(Operator::Round),
-                        (OperatorState::Sin, 'n') => Either::Left(Operator::Sin),
-                        (OperatorState::SqrtExpectR, 'r') => {
-                            Either::Right(OperatorState::SqrtExpectT)
-                        }
-                        (OperatorState::SqrtExpectT, 't') => Either::Left(Operator::Sqrt),
-                        (OperatorState::Tan, 'n') => Either::Left(Operator::Tan),
-                        (OperatorState::Xor, 'r') => Either::Left(Operator::Xor),
-                        (_, _) => return Some(self.unexpected_char(c)),
-                    };
-                    match out {
-                        Either::Left(left) => {
-                            self.state = State::Idle;
-                            return Some(Ok(Token::Operator(left)));
-                        }
-                        Either::Right(right) => *us = right,
-                    }
-                }
-                #[cfg(not(feature = "parse-comments"))]
-                State::Comment => {
-                    match c {
-                        ')' => {
-                            self.state = State::Idle;
-                            return Some(Ok(Token::Comment));
-                        }
-                        c if find_in_str("(\r\n", c) => {
-                            self.state = State::Idle;
-                            return Some(self.unexpected_char(c));
-                        }
-                        _ => {}
-                    };
-                }
-                #[cfg(feature = "parse-comments")]
-                State::Comment(ref mut s) => {
-                    match c {
-                        ')' => {
-                            let msg = mem::replace(s, String::new());
-                            self.state = State::Idle;
-                            return Some(Ok(Token::Comment(msg)));
-                        }
-                        c if !find_in_str("(\r\n", c) => {
-                            s.push(c);
-                        }
-                        c => {
-                            self.state = State::Idle;
-                            return Some(self.unexpected_char(c));
-                        }
-                    };
-                }
-                #[cfg(all(not(feature = "parse-comments"), feature = "extended"))]
-                State::SemiColonComment => {
-                    if c == '\r' || c == '\n' {
-                        self.state = State::Idle;
-                        self.look_ahead = Some(c);
-                        return Some(Ok(Token::Comment));
-                    }
-                }
-                #[cfg(all(feature = "parse-comments", feature = "extended"))]
-                State::SemiColonComment(ref mut s) => {
-                    if c == '\r' || c == '\n' {
-                        let msg = mem::replace(s, String::new());
-                        self.state = State::Idle;
-                        self.look_ahead = Some(c);
-                        return Some(Ok(Token::Comment(msg)));
-                    } else {
-                        s.push(c)
-                    }
-                }
-                State::ErrorRecovery => {
-                    if c == '\r' || c == '\n' {
-                        self.state = State::Idle;
-                        return Some(Ok(Token::EndOfLine));
-                    }
-                }
-            };
+            let tok = self.process_char(c);
+            if tok.is_some() {
+                return tok;
+            }
             c = match self.input.next() {
-                Some(Ok(c)) => c.to_ascii_lowercase(),
+                Some(Ok(new_c)) => new_c,
                 Some(Err(e)) => return Some(Err(e)),
                 None => return None,
             };
@@ -395,7 +383,7 @@ where
 mod test {
     #[cfg(feature = "parse-expressions")]
     use super::Operator;
-    use super::{Error, Lexer, Token};
+    use super::{Error, Lexer, State, Token};
 
     #[test]
     fn parse_all() {
@@ -475,7 +463,7 @@ mod test {
                 lexer.collect::<Vec<_>>(),
                 &[
                     #[cfg(feature = "parse-comments")]
-                    Ok(Token::Comment(" this is another comment".to_string())),
+                    Ok(Token::Comment(" This is another comment".to_string())),
                     #[cfg(not(feature = "parse-comments"))]
                     Ok(Token::Comment),
                     Ok(Token::EndOfLine)
@@ -538,7 +526,6 @@ mod test {
     #[cfg(not(feature = "extended"))]
     #[test]
     fn eouvw_are_illegal_chars() {
-        use super::State;
         let tokens: Vec<_> = Lexer::new(
             "E\ne\nO\no\nU\nu\nV\nv\nW\nw\n"
                 .chars()
@@ -548,23 +535,23 @@ mod test {
         assert_eq!(
             tokens,
             &[
-                Err(Error::UnexpectedChar(State::Idle, 'e')),
+                Err(Error::UnexpectedChar(State::Idle, 'E')),
                 Ok(Token::EndOfLine),
                 Err(Error::UnexpectedChar(State::Idle, 'e')),
                 Ok(Token::EndOfLine),
-                Err(Error::UnexpectedChar(State::Idle, 'o')),
+                Err(Error::UnexpectedChar(State::Idle, 'O')),
                 Ok(Token::EndOfLine),
                 Err(Error::UnexpectedChar(State::Idle, 'o')),
                 Ok(Token::EndOfLine),
-                Err(Error::UnexpectedChar(State::Idle, 'u')),
+                Err(Error::UnexpectedChar(State::Idle, 'U')),
                 Ok(Token::EndOfLine),
                 Err(Error::UnexpectedChar(State::Idle, 'u')),
                 Ok(Token::EndOfLine),
-                Err(Error::UnexpectedChar(State::Idle, 'v')),
+                Err(Error::UnexpectedChar(State::Idle, 'V')),
                 Ok(Token::EndOfLine),
                 Err(Error::UnexpectedChar(State::Idle, 'v')),
                 Ok(Token::EndOfLine),
-                Err(Error::UnexpectedChar(State::Idle, 'w')),
+                Err(Error::UnexpectedChar(State::Idle, 'W')),
                 Ok(Token::EndOfLine),
                 Err(Error::UnexpectedChar(State::Idle, 'w')),
                 Ok(Token::EndOfLine),
@@ -658,4 +645,42 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn open_parenthesis_are_not_allowed_inside_comments() {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(128);
+        let lexer = &mut Lexer::new(receiver.try_iter());
+
+        "(Hello world ! (".chars().for_each(|c| {
+            sender
+                .send(Result::<char, Error>::Ok(c))
+                .expect("Send failure")
+        });
+
+        #[cfg(feature = "parse-comments")]
+        let state = State::Comment("Hello world ! ".to_string());
+        #[cfg(not(feature = "parse-comments"))]
+        let state = State::Comment;
+        assert_eq!(
+            lexer.collect::<Vec<_>>(),
+            &[Err(Error::UnexpectedChar(state, '(')),]
+        );
+
+        let (sender, receiver) = std::sync::mpsc::sync_channel(128);
+        let lexer = &mut Lexer::new(receiver.try_iter());
+        "(Hello world !\n".chars().for_each(|c| {
+            sender
+                .send(Result::<char, Error>::Ok(c))
+                .expect("Send failure")
+        });
+        #[cfg(feature = "parse-comments")]
+        let state = State::Comment("Hello world !".to_string());
+        #[cfg(not(feature = "parse-comments"))]
+        let state = State::Comment;
+        assert_eq!(
+            lexer.collect::<Vec<_>>(),
+            &[Err(Error::UnexpectedChar(state, '\n')),]
+        );
+    }
+
 }

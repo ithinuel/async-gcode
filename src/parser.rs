@@ -555,7 +555,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::{lexer::State as LexerState, Error, GCode, Parser, RealValue, State, Token};
+    use super::{Error, GCode, Parser, RealValue, State, Token};
 
     #[test]
     fn empty_lines_are_ignored() {
@@ -619,25 +619,8 @@ mod test {
         assert_eq!(
             Parser::new(input).collect::<Vec<_>>(),
             &[Ok(GCode::Comment(
-                "hello world ! this is a comment.".to_string()
+                "Hello world ! This is a comment.".to_string()
             ))]
-        );
-    }
-
-    #[test]
-    fn open_parenthesis_are_not_allowed_inside_comments() {
-        let input = "(Hello world ! (".chars().map(Result::<char, Error>::Ok);
-
-        assert_eq!(
-            Parser::new(input).collect::<Vec<_>>(),
-            &[Err(Error::UnexpectedChar(LexerState::Idle, '(')),]
-        );
-
-        let input = "(Hello world !\n".chars().map(Result::<char, Error>::Ok);
-
-        assert_eq!(
-            Parser::new(input).collect::<Vec<_>>(),
-            &[Err(Error::UnexpectedChar(LexerState::Idle, '\n')),]
         );
     }
 
