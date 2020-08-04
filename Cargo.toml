@@ -9,24 +9,28 @@ edition = "2018"
 repository = "https://github.com/ithinuel/gcode-rs"
 
 [features]
-default = ["parse-expressions", "parse-parameters", "parse-comments"]
-no_std = []
-parse-expressions = []
-parse-parameters = []
+default = ["std"]
+std = []
 parse-comments = []
+parse-trailing-comment = []
+parse-checksum = []
+parse-parameters = []
+parse-expressions = []
 optional-value = []
-# extended:
-# Support for 3d printer flavor
-# - no word restriction
-# - semi-colon comments
-extended = []
+string-value = []
 
 [badges]
 travis-ci = { repository = "ithinuel/gcode-rs", branch = "no_std" }
 codecov = { repository = "ithinuel/gcode-rs", branch = "no_std", service = "github" }
 maintenance = { status = "experimental" }
 
-# [dependencies.nom]
-# version = "^4"
-# default-features = false
-# features = []
+[dev-dependencies]
+futures-executor = { version = "0.3.5" }
+
+[dependencies]
+either = {version = "^1", default-features = false }
+futures = { version = "0.3.5", default-features = false }
+pin-project-lite = { version = "0.1.7" }
+
+#num-rational = {version = "^0", default-features = false}
+#num-traits = { version = "^0", default-features = false}

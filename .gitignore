@@ -4,3 +4,4 @@ kcov*
 **/*.rs.bk
 tags
 **/*.rustfmt
+Cargo.lock
