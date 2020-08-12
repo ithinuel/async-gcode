@@ -10,16 +10,18 @@
 ))]
 extern crate alloc;
 
+#[macro_use]
+mod utils;
+
 mod stream;
 mod types;
-mod utils;
 
 mod parser;
 
 pub use parser::Parser;
 pub use types::RealValue;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Error {
     UnexpectedByte(u8),
     NumberOverflow,

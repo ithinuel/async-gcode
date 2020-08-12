@@ -1,3 +1,24 @@
+#[derive(Debug)]
+pub(crate) enum ParseResult<G, E> {
+    Input(E),
+    Parsing(crate::Error),
+    Ok(G),
+}
+impl<O, E> From<core::result::Result<O, E>> for ParseResult<O, E> {
+    fn from(f: core::result::Result<O, E>) -> Self {
+        match f {
+            Ok(o) => ParseResult::Ok(o),
+            Err(e) => ParseResult::Input(e),
+        }
+    }
+}
+
+impl<O, E> From<crate::Error> for ParseResult<O, E> {
+    fn from(f: crate::Error) -> Self {
+        ParseResult::Parsing(f)
+    }
+}
+
 #[cfg(not(feature = "parse-comments"))]
 pub type Comment = ();
 #[cfg(feature = "parse-comments")]

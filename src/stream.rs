@@ -1,6 +1,6 @@
-use futures::Stream;
+use futures::TryStream;
 
-pub(crate) trait MyStreamExt: Stream {
+pub(crate) trait MyTryStreamExt: TryStream {
     #[cfg(not(feature = "parse-checksum"))]
     fn push_backable(self) -> pushback::PushBack<Self>
     where
@@ -12,16 +12,16 @@ pub(crate) trait MyStreamExt: Stream {
     #[cfg(feature = "parse-checksum")]
     fn xor_summed_push_backable(
         self,
-        initial_sum: Self::Item,
+        initial_sum: Self::Ok,
     ) -> xorsum_pushback::XorSumPushBack<Self>
     where
         Self: Sized,
-        Self::Item: Copy + core::ops::BitXorAssign,
+        Self::Ok: Copy + core::ops::BitXorAssign,
     {
         xorsum_pushback::XorSumPushBack::new(self, initial_sum)
     }
 }
-impl<T: ?Sized> MyStreamExt for T where T: Stream {}
+impl<T: ?Sized> MyTryStreamExt for T where T: TryStream {}
 
 pub(crate) trait PushBackable {
     type Item;
@@ -30,7 +30,7 @@ pub(crate) trait PushBackable {
 
 #[cfg(not(feature = "parse-checksum"))]
 pub(crate) mod pushback {
-    use futures::Stream;
+    use futures::{Stream, TryStream};
     use pin_project_lite::pin_project;
 
     use core::pin::Pin;
@@ -39,33 +39,39 @@ pub(crate) mod pushback {
     use super::PushBackable;
 
     pin_project! {
-        pub(crate) struct PushBack<S: Stream> {
+        pub(crate) struct PushBack<S: TryStream> {
             #[pin]
             stream: S,
-            val: Option<S::Item>,
+            val: Option<S::Ok>,
         }
     }
 
-    impl<S: Stream> PushBack<S> {
+    impl<S: TryStream> PushBack<S> {
         pub fn new(stream: S) -> Self {
             Self { stream, val: None }
         }
     }
-    impl<S: Stream> PushBackable for PushBack<S> {
-        type Item = S::Item;
-        fn push_back(&mut self, v: S::Item) -> Option<S::Item> {
+    impl<S> PushBackable for PushBack<S>
+    where
+        S: TryStream,
+    {
+        type Item = S::Ok;
+        fn push_back(&mut self, v: S::Ok) -> Option<S::Ok> {
             self.val.replace(v)
         }
     }
 
-    impl<S: Stream> Stream for PushBack<S> {
-        type Item = S::Item;
-        fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<S::Item>> {
+    impl<S> Stream for PushBack<S>
+    where
+        S: TryStream,
+    {
+        type Item = Result<S::Ok, S::Error>;
+        fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             let this = self.project();
             if let Some(v) = this.val.take() {
-                Poll::Ready(Some(v))
+                Poll::Ready(Some(Ok(v)))
             } else {
-                this.stream.poll_next(ctx)
+                this.stream.try_poll_next(ctx)
             }
         }
     }
@@ -77,7 +83,11 @@ pub(crate) mod pushback {
 
         #[test]
         fn the_stream_works() {
-            let data = [1, 2, 4, 8, 16, 32, 64, 128];
+            let data = [1, 2, 4, 8, 16, 32, 64, 128]
+                .iter()
+                .copied()
+                .map(Result::<_, core::convert::Infallible>::Ok)
+                .collect::<Vec<_>>();
             let mut strm = PushBack::new(stream::iter(data.iter().copied()));
             assert_eq!(
                 futures_executor::block_on((&mut strm).collect::<Vec<_>>()),
@@ -87,7 +97,11 @@ pub(crate) mod pushback {
 
         #[test]
         fn pushbacked_value_come_out_first() {
-            let data = [1, 2, 4, 8, 16, 32, 64, 128];
+            let data = [1, 2, 4, 8, 16, 32, 64, 128]
+                .iter()
+                .copied()
+                .map(Result::<_, core::convert::Infallible>::Ok)
+                .collect::<Vec<_>>();
             let mut strm = PushBack::new(stream::iter(data.iter().copied()));
             assert_eq!(
                 futures_executor::block_on((&mut strm).take(4).collect::<Vec<_>>()),
@@ -99,6 +113,10 @@ pub(crate) mod pushback {
             assert_eq!(
                 futures_executor::block_on((&mut strm).take(4).collect::<Vec<_>>()),
                 [0xCC, 16, 32, 64]
+                    .iter()
+                    .copied()
+                    .map(Result::<_, core::convert::Infallible>::Ok)
+                    .collect::<Vec<_>>()
             );
         }
     }
@@ -106,7 +124,7 @@ pub(crate) mod pushback {
 
 #[cfg(feature = "parse-checksum")]
 pub(crate) mod xorsum_pushback {
-    use futures::Stream;
+    use futures::{Stream, TryStream};
     use pin_project_lite::pin_project;
 
     use core::pin::Pin;
@@ -115,20 +133,20 @@ pub(crate) mod xorsum_pushback {
     use super::PushBackable;
 
     pin_project! {
-        pub(crate) struct XorSumPushBack<S: Stream> {
+        pub(crate) struct XorSumPushBack<S: TryStream> {
             #[pin]
             stream: S,
-            head: Option<S::Item>,
-            sum: S::Item
+            head: Option<S::Ok>,
+            sum: S::Ok
         }
     }
 
     impl<S> XorSumPushBack<S>
     where
-        S: Stream,
-        S::Item: core::ops::BitXorAssign + Copy,
+        S: TryStream,
+        S::Ok: core::ops::BitXorAssign + Copy,
     {
-        pub fn new(stream: S, initial_sum: S::Item) -> Self {
+        pub fn new(stream: S, initial_sum: S::Ok) -> Self {
             Self {
                 stream,
                 head: None,
@@ -136,22 +154,22 @@ pub(crate) mod xorsum_pushback {
             }
         }
 
-        pub fn reset_sum(&mut self, initial_sum: S::Item) {
+        pub fn reset_sum(&mut self, initial_sum: S::Ok) {
             self.sum = initial_sum;
         }
 
-        pub fn sum(&self) -> S::Item {
+        pub fn sum(&self) -> S::Ok {
             self.sum
         }
     }
 
     impl<S> PushBackable for XorSumPushBack<S>
     where
-        S: Stream,
-        S::Item: core::ops::BitXorAssign + Copy,
+        S: TryStream,
+        S::Ok: core::ops::BitXorAssign + Copy,
     {
-        type Item = S::Item;
-        fn push_back(&mut self, head: S::Item) -> Option<S::Item> {
+        type Item = S::Ok;
+        fn push_back(&mut self, head: S::Ok) -> Option<S::Ok> {
             self.sum ^= head;
             self.head.replace(head)
         }
@@ -159,23 +177,23 @@ pub(crate) mod xorsum_pushback {
 
     impl<S> Stream for XorSumPushBack<S>
     where
-        S: Stream,
-        S::Item: core::ops::BitXorAssign + Copy,
+        S: TryStream,
+        S::Ok: core::ops::BitXorAssign + Copy,
     {
-        type Item = S::Item;
+        type Item = Result<S::Ok, S::Error>;
 
-        fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<S::Item>> {
+        fn poll_next(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             let this = self.project();
             let item = if let Some(item) = this.head.take() {
                 item
             } else {
-                match this.stream.poll_next(ctx) {
-                    Poll::Ready(Some(item)) => item,
+                match this.stream.try_poll_next(ctx) {
+                    Poll::Ready(Some(Ok(item))) => item,
                     other => return other,
                 }
             };
             *this.sum ^= item;
-            Poll::Ready(Some(item))
+            Poll::Ready(Some(Ok(item)))
         }
     }
 
@@ -186,7 +204,11 @@ pub(crate) mod xorsum_pushback {
 
         #[test]
         fn the_stream_works_and_the_xorsum_is_computed() {
-            let data = [1, 2, 4, 8, 16, 32, 64, 128];
+            let data = [1, 2, 4, 8, 16, 32, 64, 128]
+                .iter()
+                .copied()
+                .map(Result::<_, core::convert::Infallible>::Ok)
+                .collect::<Vec<_>>();
             let mut strm = XorSumPushBack::new(stream::iter(data.iter().copied()), 0);
             assert_eq!(
                 futures_executor::block_on((&mut strm).collect::<Vec<_>>()),
@@ -197,7 +219,11 @@ pub(crate) mod xorsum_pushback {
 
         #[test]
         fn the_xorsum_can_be_reset() {
-            let data = [1, 2, 4, 8, 16, 32, 64, 128];
+            let data = [1, 2, 4, 8, 16, 32, 64, 128]
+                .iter()
+                .copied()
+                .map(Result::<_, core::convert::Infallible>::Ok)
+                .collect::<Vec<_>>();
             let mut strm = XorSumPushBack::new(stream::iter(data.iter().copied()), 0);
             assert_eq!(
                 futures_executor::block_on((&mut strm).take(4).collect::<Vec<_>>()),
@@ -216,7 +242,11 @@ pub(crate) mod xorsum_pushback {
 
         #[test]
         fn pushing_back_updates_the_xorsum() {
-            let data = [1, 2, 4, 8, 16, 32, 64, 128];
+            let data = [1, 2, 4, 8, 16, 32, 64, 128]
+                .iter()
+                .copied()
+                .map(Result::<_, core::convert::Infallible>::Ok)
+                .collect::<Vec<_>>();
             let mut strm = XorSumPushBack::new(stream::iter(data.iter().copied()), 0);
             assert_eq!(
                 futures_executor::block_on((&mut strm).take(4).collect::<Vec<_>>()),
@@ -230,6 +260,10 @@ pub(crate) mod xorsum_pushback {
             assert_eq!(
                 futures_executor::block_on((&mut strm).take(4).collect::<Vec<_>>()),
                 [0xCC, 16, 32, 64]
+                    .iter()
+                    .copied()
+                    .map(Result::<_, core::convert::Infallible>::Ok)
+                    .collect::<Vec<_>>()
             );
         }
     }

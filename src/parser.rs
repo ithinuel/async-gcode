@@ -20,12 +20,11 @@ mod expressions;
 #[cfg(test)]
 mod test;
 
-use core::marker::Unpin;
-use futures::stream::{self, StreamExt};
+use futures::{Stream, StreamExt};
 
 use crate::{
-    stream::{MyStreamExt, PushBackable},
-    types::Comment,
+    stream::{MyTryStreamExt, PushBackable},
+    types::{Comment, ParseResult},
     utils::skip_whitespaces,
     Error, GCode,
 };
@@ -51,18 +50,20 @@ enum AsyncParserState {
 }
 
 #[cfg(all(feature = "parse-trailing-comment", not(feature = "parse-comments")))]
-async fn parse_eol_comment<S>(input: &mut S) -> Option<Comment>
+async fn parse_eol_comment<S, E>(input: &mut S) -> Option<Result<Comment, E>>
 where
-    S: stream::Stream<Item = u8>
-        + core::marker::Unpin
-        + PushBackable<Item = <S as stream::Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     loop {
-        let b = input.next().await?;
+        let b = match input.next().await? {
+            Ok(o) => o,
+            Err(e) => return Some(Err(e)),
+        };
         match b {
             b'\r' | b'\n' => {
                 input.push_back(b);
-                break Some(());
+                break Some(Ok(()));
             }
             _ => {}
         }
@@ -70,19 +71,21 @@ where
 }
 
 #[cfg(all(feature = "parse-trailing-comment", feature = "parse-comments"))]
-async fn parse_eol_comment<S>(input: &mut S) -> Option<Result<Comment, Error>>
+async fn parse_eol_comment<S, E>(input: &mut S) -> Option<ParseResult<Comment, E>>
 where
-    S: stream::Stream<Item = u8>
-        + core::marker::Unpin
-        + PushBackable<Item = <S as stream::Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     let mut v = Vec::new();
     loop {
-        let b = input.next().await?;
+        let b = try_result!(input.next());
         match b {
             b'\r' | b'\n' => {
                 input.push_back(b);
-                break Some(String::from_utf8(v).map_err(|_| Error::InvalidUTF8String));
+                break Some(match String::from_utf8(v) {
+                    Ok(s) => ParseResult::Ok(s),
+                    Err(_) => Error::InvalidUTF8String.into(),
+                });
             }
             b => v.push(b),
         }
@@ -90,39 +93,43 @@ where
 }
 
 #[cfg(not(feature = "parse-comments"))]
-async fn parse_inline_comment<S>(input: &mut S) -> Option<Result<Comment, Error>>
+async fn parse_inline_comment<S, E>(input: &mut S) -> Option<ParseResult<Comment, E>>
 where
-    S: stream::Stream<Item = u8>
-        + core::marker::Unpin
-        + PushBackable<Item = <S as stream::Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     loop {
-        match input.next().await? {
+        match try_result!(input.next()) {
             b'\\' => {
-                input.next().await?;
+                try_result!(input.next());
             }
-            b'(' => break Some(Err(Error::UnexpectedByte(b'('))),
-            b')' => break Some(Ok(())),
+            b'(' => break Some(Error::UnexpectedByte(b'(').into()),
+            b')' => break Some(ParseResult::Ok(())),
             _ => {}
         }
     }
 }
 
 #[cfg(feature = "parse-comments")]
-async fn parse_inline_comment<S>(input: &mut S) -> Option<Result<Comment, Error>>
+async fn parse_inline_comment<S, E>(input: &mut S) -> Option<ParseResult<Comment, E>>
 where
-    S: stream::Stream<Item = u8>
-        + core::marker::Unpin
-        + PushBackable<Item = <S as stream::Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     let mut v = Vec::new();
     loop {
-        match input.next().await? {
+        let b = try_result!(input.next());
+        match b {
             b'\\' => {
-                v.push(input.next().await?);
+                v.push(try_result!(input.next()));
             }
-            b'(' => break Some(Err(Error::UnexpectedByte(b'('))),
-            b')' => break Some(String::from_utf8(v).map_err(|_| Error::InvalidUTF8String)),
+            b'(' => break Some(Error::UnexpectedByte(b'(').into()),
+            b')' => {
+                break Some(match String::from_utf8(v) {
+                    Ok(s) => ParseResult::Ok(s),
+                    Err(_) => Error::InvalidUTF8String.into(),
+                })
+            }
             b => v.push(b),
         }
     }
@@ -134,37 +141,62 @@ use crate::stream::pushback::PushBack;
 #[cfg(feature = "parse-checksum")]
 type PushBack<T> = crate::stream::xorsum_pushback::XorSumPushBack<T>;
 
-async fn parse_eol<S: stream::Stream<Item = u8> + Unpin>(
+async fn parse_eol<S, E>(
     state: &mut AsyncParserState,
     input: &mut PushBack<S>,
-) -> Option<Result<GCode, Error>> {
+) -> Option<ParseResult<GCode, E>>
+where
+    S: Stream<Item = Result<u8, E>> + Unpin,
+    E: core::fmt::Debug,
+{
     Some(loop {
-        match input.next().await? {
+        let b = try_result!(input.next());
+        match b {
             b'\r' | b'\n' => {
                 *state = AsyncParserState::Start(true);
                 #[cfg(feature = "parse-checksum")]
                 {
                     input.reset_sum(0);
                 }
-                break Ok(GCode::Execute);
+                break ParseResult::Ok(GCode::Execute);
             }
             b' ' => {}
-            b => break Err(Error::UnexpectedByte(b)),
+            b => break Error::UnexpectedByte(b).into(),
         }
     })
 }
 
-pub struct Parser<S>
+macro_rules! try_await {
+    ($input:expr) => {
+        match $input.await? {
+            ParseResult::Ok(ok) => ok,
+            ParseResult::Parsing(err) => break Err(err.into()),
+            ParseResult::Input(err) => break Err(err.into()),
+        }
+    };
+}
+
+macro_rules! try_await_result {
+    ($input:expr) => {
+        match $input.await? {
+            Ok(ok) => ok,
+            Err(err) => break Err(err.into()),
+        }
+    };
+}
+
+pub struct Parser<S, E>
 where
-    S: stream::Stream<Item = u8> + core::marker::Unpin,
+    S: Stream<Item = Result<u8, E>> + Unpin,
 {
     input: PushBack<S>,
     state: AsyncParserState,
 }
 
-impl<S> Parser<S>
+impl<S, E> Parser<S, E>
 where
-    S: stream::Stream<Item = u8> + Unpin,
+    S: Stream<Item = Result<u8, E>> + Unpin,
+    E: From<Error> + core::fmt::Debug,
 {
     pub fn new(input: S) -> Self {
         Self {
@@ -175,153 +207,138 @@ where
             state: AsyncParserState::Start(true),
         }
     }
-    pub async fn next(self) -> Option<(Result<GCode, Error>, Self)> {
-        let Parser {
-            mut input,
-            mut state,
-        } = self;
-
+    pub async fn next(&mut self) -> Option<Result<GCode, E>> {
         let res = loop {
-            let b = input.next().await?;
-            // println!("{:?}: {:?}", state, char::from(b));
-            match state {
+            let b = match self.input.next().await? {
+                Ok(b) => b,
+                Err(err) => return Some(Err(err)),
+            };
+
+            // println!("{:?}: {:?}", self.state, char::from(b));
+            match self.state {
                 AsyncParserState::Start(ref mut first_byte) => match b {
-                    b'\r' | b'\n' => {
-                        *first_byte = true; /* ignore empty new lines */
-                        #[cfg(feature = "parse-checksum")]
-                        {
-                            input.reset_sum(0);
-                        }
+                    b'\n' => {
+                        self.input.push_back(b);
+                        break Ok(try_await!(parse_eol(&mut self.state, &mut self.input)));
                     }
                     b'/' if *first_byte => {
-                        state = AsyncParserState::LineNumberOrSegment;
+                        self.state = AsyncParserState::LineNumberOrSegment;
                         break Ok(GCode::BlockDelete);
                     }
                     b' ' => {
                         *first_byte = false;
                     }
                     _ => {
-                        input.push_back(b);
-                        state = AsyncParserState::LineNumberOrSegment
+                        self.input.push_back(b);
+                        self.state = AsyncParserState::LineNumberOrSegment
                     }
                 },
                 AsyncParserState::LineNumberOrSegment => match b.to_ascii_lowercase() {
                     b'n' => {
-                        skip_whitespaces(&mut input).await?;
-                        break match parse_number(&mut input).await? {
-                            Ok((n, ord)) => {
-                                if ord == 1 {
-                                    Err(Error::UnexpectedByte(input.next().await?))
-                                } else if ord > 10000 {
-                                    Err(Error::NumberOverflow)
-                                } else {
-                                    state = AsyncParserState::Segment;
-                                    Ok(GCode::LineNumber(n))
-                                }
-                            }
-                            Err(e) => Err(e),
+                        try_await_result!(skip_whitespaces(&mut self.input));
+                        let (n, ord) = try_await_result!(parse_number(&mut self.input));
+                        break if ord == 1 {
+                            let b = try_await_result!(self.input.next());
+                            Err(Error::UnexpectedByte(b).into())
+                        } else if ord > 10000 {
+                            Err(Error::NumberOverflow.into())
+                        } else {
+                            self.state = AsyncParserState::Segment;
+                            Ok(GCode::LineNumber(n))
                         };
                     }
                     _ => {
-                        input.push_back(b);
-                        state = AsyncParserState::Segment;
+                        self.input.push_back(b);
+                        self.state = AsyncParserState::Segment;
                     }
                 },
                 AsyncParserState::Segment => match b.to_ascii_lowercase() {
                     b' ' => {}
                     letter @ b'a'..=b'z' => {
-                        skip_whitespaces(&mut input).await?;
-                        break match parse_real_value(&mut input).await? {
-                            Ok(rv) => {
-                                // println!("word({:?}, {:?})", letter as char, rv);
-                                Ok(GCode::Word(letter.into(), rv))
-                            }
-                            Err(e) => Err(e),
-                        };
+                        try_await_result!(skip_whitespaces(&mut self.input));
+                        let rv = try_await!(parse_real_value(&mut self.input));
+                        // println!("word({:?}, {:?})", letter as char, rv);
+                        break Ok(GCode::Word(letter.into(), rv));
                     }
                     b'\r' | b'\n' => {
-                        input.push_back(b);
-                        break parse_eol(&mut state, &mut input).await?;
+                        self.input.push_back(b);
+                        break Ok(try_await!(parse_eol(&mut self.state, &mut self.input)));
                     }
                     // param support feature
                     #[cfg(feature = "parse-parameters")]
                     b'#' => {
-                        skip_whitespaces(&mut input).await?;
-                        let param_id = match parse_real_value(&mut input).await? {
+                        try_await_result!(skip_whitespaces(&mut self.input));
+                        #[allow(clippy::match_single_binding)]
+                        let param_id = match try_await!(parse_real_value(&mut self.input)) {
                             #[cfg(feature = "optional-value")]
-                            Ok(crate::types::RealValue::None) => {
-                                break Err(Error::UnexpectedByte((&mut input).next().await?))
+                            crate::RealValue::None => {
+                                let b = try_await_result!((&mut self.input).next());
+                                break Err(Error::UnexpectedByte(b).into());
                             }
-                            Ok(id) => id,
-                            Err(e) => break Err(e),
+                            id => id,
                         };
-                        skip_whitespaces(&mut input).await?;
-                        let b = (&mut input).next().await?;
+                        // println!("param_id: {:?}", param_id);
+                        try_await_result!(skip_whitespaces(&mut self.input));
+                        let b = try_await_result!((&mut self.input).next());
                         if b'=' != b {
-                            break Err(Error::UnexpectedByte(b));
+                            break Err(Error::UnexpectedByte(b).into());
                         }
-                        skip_whitespaces(&mut input).await?;
-                        let value = match parse_real_value(&mut input).await? {
-                            Ok(id) => id,
-                            Err(e) => break Err(e),
-                        };
+
+                        try_await_result!(skip_whitespaces(&mut self.input));
+                        let value = try_await!(parse_real_value(&mut self.input));
+                        // println!("param_id: {:?}", value);
+
                         break Ok(GCode::ParameterSet(param_id, value));
                     }
                     // checksum support feature
                     #[cfg(feature = "parse-checksum")]
                     b'*' => {
-                        let sum = input.sum() ^ b'*';
-                        skip_whitespaces(&mut input).await?;
-                        match parse_number(&mut input).await? {
-                            Ok((n, _)) => {
-                                // println!("{} {}", sum, n);
-                                if n >= 256 {
-                                    break Err(Error::NumberOverflow);
-                                } else if (n as u8) != sum {
-                                    break Err(Error::BadChecksum(sum));
-                                } else {
-                                    skip_whitespaces(&mut input).await?;
-                                    #[cfg(not(feature = "parse-trailing-comment"))]
-                                    {
-                                        state = AsyncParserState::EndOfLine;
-                                    }
-                                    #[cfg(feature = "parse-trailing-comment")]
-                                    {
-                                        state = AsyncParserState::EoLOrTrailingComment;
-                                    }
-                                }
+                        let sum = self.input.sum() ^ b'*';
+                        try_await_result!(skip_whitespaces(&mut self.input));
+                        let (n, _) = try_await_result!(parse_number(&mut self.input));
+                        // println!("{} {}", sum, n);
+                        if n >= 256 {
+                            break Err(Error::NumberOverflow.into());
+                        } else if (n as u8) != sum {
+                            break Err(Error::BadChecksum(sum).into());
+                        } else {
+                            try_await_result!(skip_whitespaces(&mut self.input));
+                            #[cfg(not(feature = "parse-trailing-comment"))]
+                            {
+                                self.state = AsyncParserState::EndOfLine;
                             }
-                            Err(e) => break Err(e),
+                            #[cfg(feature = "parse-trailing-comment")]
+                            {
+                                self.state = AsyncParserState::EoLOrTrailingComment;
+                            }
                         }
                     }
                     // comment support features
                     #[cfg(not(feature = "parse-comments"))]
                     b'(' => {
-                        if let Err(e) = parse_inline_comment(&mut input).await? {
-                            break Err(e);
-                        }
+                        try_await!(parse_inline_comment(&mut self.input));
                     }
                     #[cfg(feature = "parse-comments")]
-                    b'(' => break parse_inline_comment(&mut input).await?.map(GCode::Comment),
+                    b'(' => {
+                        break Ok(GCode::Comment(try_await!(parse_inline_comment(
+                            &mut self.input
+                        ))));
+                    }
                     #[cfg(all(
                         feature = "parse-trailing-comment",
                         not(feature = "parse-comments")
                     ))]
                     b';' => {
-                        parse_eol_comment(&mut input).await?;
-                        state = AsyncParserState::EndOfLine;
+                        try_await_result!(parse_eol_comment(&mut self.input));
+                        self.state = AsyncParserState::EndOfLine;
                     }
                     #[cfg(all(feature = "parse-trailing-comment", feature = "parse-comments"))]
                     b';' => {
-                        break match parse_eol_comment(&mut input).await? {
-                            Ok(s) => {
-                                state = AsyncParserState::EndOfLine;
-                                Ok(GCode::Comment(s))
-                            }
-                            Err(e) => Err(e),
-                        }
+                        let s = try_await!(parse_eol_comment(&mut self.input));
+                        self.state = AsyncParserState::EndOfLine;
+                        break Ok(GCode::Comment(s));
                     }
-                    _ => break Err(Error::UnexpectedByte(b)),
+                    _ => break Err(Error::UnexpectedByte(b).into()),
                 },
                 #[cfg(all(
                     feature = "parse-trailing-comment",
@@ -329,10 +346,10 @@ where
                     feature = "parse-checksum"
                 ))]
                 AsyncParserState::EoLOrTrailingComment => match b {
-                    b';' => parse_eol_comment(&mut input).await?,
+                    b';' => try_await_result!(parse_eol_comment(&mut self.input)),
                     _ => {
-                        input.push_back(b);
-                        break parse_eol(&mut state, &mut input).await?;
+                        self.input.push_back(b);
+                        break Ok(try_await!(parse_eol(&mut self.state, &mut self.input)));
                     }
                 },
                 #[cfg(all(
@@ -342,36 +359,33 @@ where
                 ))]
                 AsyncParserState::EoLOrTrailingComment => match b {
                     b';' => {
-                        break match parse_eol_comment(&mut input).await? {
-                            Ok(s) => {
-                                state = AsyncParserState::EndOfLine;
-                                Ok(GCode::Comment(s))
-                            }
-                            Err(e) => Err(e),
-                        }
+                        let s = try_await!(parse_eol_comment(&mut self.input));
+                        self.state = AsyncParserState::EndOfLine;
+                        break Ok(GCode::Comment(s));
                     }
                     _ => {
-                        input.push_back(b);
-                        break parse_eol(&mut state, &mut input).await?;
+                        self.input.push_back(b);
+                        break Ok(try_await!(parse_eol(&mut self.state, &mut self.input)));
                     }
                 },
                 #[cfg(any(feature = "parse-trailing-comment", feature = "parse-checksum"))]
                 AsyncParserState::EndOfLine => {
-                    input.push_back(b);
-                    break parse_eol(&mut state, &mut input).await?;
+                    self.input.push_back(b);
+                    break Ok(try_await!(parse_eol(&mut self.state, &mut self.input)));
                 }
                 AsyncParserState::ErrorRecovery => match b {
                     b'\r' | b'\n' => {
-                        input.push_back(b);
-                        break parse_eol(&mut state, &mut input).await?;
+                        self.input.push_back(b);
+                        break Ok(try_await!(parse_eol(&mut self.state, &mut self.input)));
                     }
                     _ => {}
                 },
             }
         };
+        // eprintln!("{}:{} {:?}", file!(), line!(), res);
         if res.is_err() {
-            state = AsyncParserState::ErrorRecovery;
+            self.state = AsyncParserState::ErrorRecovery;
         }
-        Some((res, Self { input, state }))
+        Some(res)
     }
 }

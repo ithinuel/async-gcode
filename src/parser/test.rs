@@ -1,4 +1,6 @@
-use super::{stream, Error, GCode, Parser, StreamExt};
+use futures::stream;
+
+use super::{Error, GCode, Parser, StreamExt};
 
 #[cfg(feature = "optional-value")]
 use crate::types::RealValue;
@@ -13,9 +15,15 @@ mod parse_parameters;
 mod parse_trailing_comment;
 
 fn block_on<T: Iterator<Item = u8>>(it: T) -> Vec<Result<GCode, Error>> {
-    let parser = Parser::new(stream::iter(it));
+    let mut parser = Parser::new(stream::iter(it).map(Result::<_, Error>::Ok));
 
-    futures_executor::block_on(stream::unfold(parser, Parser::next).collect())
+    futures_executor::block_on(
+        stream::unfold(
+            &mut parser,
+            |p| async move { p.next().await.map(|w| (w, p)) },
+        )
+        .collect(),
+    )
 }
 #[cfg(not(feature = "parse-comments"))]
 fn to_gcode_comment(_msg: &str) -> [Result<GCode, Error>; 0] {
@@ -27,9 +35,11 @@ fn to_gcode_comment(msg: &str) -> [Result<GCode, Error>; 1] {
 }
 
 #[test]
-fn empty_lines_are_ignored() {
-    assert_eq!(block_on("\r\n\n".bytes()), &[]);
-    assert_eq!(block_on(" \n \r \n".bytes()), &[]);
+fn empty_lines_are_not_ignored() {
+    assert_eq!(
+        block_on("\n\n".bytes()),
+        &[Ok(GCode::Execute), Ok(GCode::Execute)]
+    );
 }
 
 #[test]
@@ -40,6 +50,45 @@ fn block_delete_emited_immediately() {
 #[test]
 fn spaces_are_not_allowed_before_block_delete() {
     assert_eq!(block_on(" /".bytes()), &[Err(Error::UnexpectedByte(b'/'))]);
+}
+
+#[test]
+fn error_in_underlying_stream_are_passed_through_and_parser_recovers_on_execute() {
+    #[derive(Debug, Copy, Clone, PartialEq)]
+    enum TestError {
+        SomeError,
+        ParseError(Error),
+    }
+    impl From<Error> for TestError {
+        fn from(from: Error) -> Self {
+            TestError::ParseError(from)
+        }
+    }
+
+    let string = b"g12 h12 b32\n";
+    let input = string[0..6]
+        .iter()
+        .copied()
+        .map(Result::Ok)
+        .chain([Err(TestError::SomeError)].iter().copied())
+        .chain(string[6..].iter().copied().map(Result::Ok));
+
+    let mut parser = Parser::new(stream::iter(input));
+
+    assert_eq!(
+        futures_executor::block_on(
+            stream::unfold(
+                &mut parser,
+                |p| async move { p.next().await.map(|w| (w, p)) },
+            )
+            .collect::<Vec<_>>()
+        ),
+        [
+            Ok(GCode::Word('g', (12).into())),
+            Err(TestError::SomeError),
+            Ok(GCode::Execute)
+        ]
+    )
 }
 
 #[test]
@@ -140,6 +189,7 @@ fn word_with_number() {
     assert_eq!(
         block_on(input),
         &[
+            Ok(GCode::Execute),
             Ok(GCode::Word('g', (21.0).into())),
             Ok(GCode::Word('h', (21.0).into())),
             Ok(GCode::Word('i', (21.098).into())),

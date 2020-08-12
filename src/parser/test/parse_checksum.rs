@@ -36,6 +36,7 @@ G0*119
     assert_eq!(
         block_on(input),
         &[
+            Ok(GCode::Execute),
             Ok(GCode::Word('g', (0.).into())),
             Ok(GCode::Execute),
             Ok(GCode::Word('g', (1.0).into())),

@@ -4,23 +4,31 @@ use std::io::{stdin, Read};
 
 use gcode::Parser;
 
+#[derive(Debug)]
+enum Error {
+    Io(std::io::Error),
+    Parse(gcode::Error),
+}
+impl From<gcode::Error> for Error {
+    fn from(f: gcode::Error) -> Self {
+        Self::Parse(f)
+    }
+}
 fn main() {
     block_on(async {
-        let parser = Parser::new(stream::iter(stdin().bytes().filter_map(
-            |input| match input {
-                Ok(input) => Some(input),
-                Err(e) => {
-                    println!("{:?}", e);
-                    None
-                }
-            },
-        )));
-        stream::unfold(parser, Parser::next)
-            .for_each(|gcode| {
-                println!("{:?}", gcode);
-                future::ready(())
-            })
-            .await;
+        let mut parser = Parser::new(stream::iter(
+            stdin().bytes().map(|res| res.map_err(Error::Io)),
+        ));
+
+        stream::unfold(
+            &mut parser,
+            |p| async move { p.next().await.map(|w| (w, p)) },
+        )
+        .for_each(|gcode| {
+            println!("{:?}", gcode);
+            future::ready(())
+        })
+        .await;
         println!("Done");
     });
 }

@@ -1,4 +1,3 @@
-use core::marker;
 use either::Either;
 use futures::stream::{Stream, StreamExt};
 use std::vec::Vec;
@@ -7,9 +6,10 @@ use crate::{
     stream::PushBackable,
     types::{
         expressions::{Associativity, ExprItem, Expression, OpType, Operator},
-        Literal, RealValue,
+        Literal, RealValue, ParseResult
     },
     utils::skip_whitespaces,
+    
     Error,
 };
 
@@ -46,16 +46,21 @@ macro_rules! match_operator {
     (@ $input:expr, $c:literal => $op:path) => {{
         let mut zipped = $input.zip(futures::stream::iter($c.iter()));
         for _ in 0..$c.len() {
-            let (input_byte, &expected_byte) = zipped.next().await?;
-            if input_byte.to_ascii_lowercase() != expected_byte {
-                return Some(Err(Error::UnexpectedByte(input_byte)))
+            match zipped.next().await? {
+                (Ok(input_byte), &expected_byte) => if input_byte.to_ascii_lowercase() != expected_byte {
+                    return Some(ParseResult::Parsing(Error::UnexpectedByte(input_byte)))
+                }
+                (Err(e), _) => return Some(ParseResult::Input(e))
             }
         }
 
         Token::Operator($op)
     }};
     (@ $input:expr, $( $(#[$($m:tt)*])* $p:pat => { $($rest:tt)* } )*) => {{
-        let b = $input.next().await?;
+        let b = match $input.next().await? {
+            Ok(b) => b,
+            Err(e) => return Some(ParseResult::Input(e)),
+        };
         match b.to_ascii_lowercase() {
             $(
                 $p => {
@@ -63,7 +68,7 @@ macro_rules! match_operator {
                 }
              )*
             #[allow(unreachable_patterns)]
-            _ => return Some(Err(Error::UnexpectedByte(b))),
+            _ => return Some(ParseResult::Parsing(Error::UnexpectedByte(b))),
         }
     }};
     ($input:expr, $b:expr, $($(#[$($m:tt)*])* $p:pat => { $($rest:tt)* })* ) => {{
@@ -75,16 +80,20 @@ macro_rules! match_operator {
                 }
              )*
             #[allow(unreachable_patterns)]
-            b => return Some(Err(Error::UnexpectedByte(b))),
+            b => return Some(ParseResult::Parsing(Error::UnexpectedByte(b))),
         }
     }}
 }
 
-async fn tokenize<S>(input: &mut S, expect: Expect) -> Option<Result<Token, Error>>
+async fn tokenize<S, E>(input: &mut S, expect: Expect) -> Option<ParseResult<Token, E>>
 where
-    S: Stream<Item = u8> + PushBackable<Item = <S as Stream>::Item> + marker::Unpin,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
-    let b = input.next().await?;
+    let b = match input.next().await? {
+        Ok(b) => b,
+        Err(e) => return Some(ParseResult::Input(e)),
+    };
     // println!("{:?}", b as char);
     let token = match expect {
         Expect::UnaryOrLiteralOrExpr => {
@@ -113,13 +122,9 @@ where
                 b't' => { b"an" => Operator::Tan }
                 _ => {{
                     input.push_back(b);
-                    let lit = super::values::parse_literal(input).await?;
-                    match lit {
-                        Ok(l) => {
-                            Token::Literal(l)
-                        }
-                        Err(e) => return Some(Err(e)),
-                    }
+                    let lit = try_parse!(super::values::parse_literal(input));
+                            Token::Literal(lit)
+                    
                 }}
             }
         }
@@ -141,24 +146,25 @@ where
                 b'm' => { b"od" => Operator::Modulus }
                 b']' => {{ Token::CloseBracket }}
                 #[cfg(not(feature = "parse-parameters"))]
-                _ => {{ return Some(Err(Error::UnexpectedByte(b))) }}
+                _ => {{ return Some(ParseResult::Parsing(Error::UnexpectedByte(b))) }}
             }
         }
         Expect::Expr => match b {
             b'[' => Token::OpenBracket,
-            _ => return Some(Err(Error::UnexpectedByte(b))),
+            _ => return Some(ParseResult::Parsing(Error::UnexpectedByte(b))),
         },
         Expect::ATanDiv => match b {
             b'/' => Token::Operator(Operator::Divide),
-            _ => return Some(Err(Error::UnexpectedByte(b))),
+            _ => return Some(ParseResult::Parsing(Error::UnexpectedByte(b))),
         },
     };
-    Some(Ok(token))
+    Some(ParseResult::Ok(token))
 }
 
-pub(crate) async fn parse_real_value<S>(input: &mut S) -> Option<Result<RealValue, Error>>
+pub(crate) async fn parse_real_value<S, E>(input: &mut S) -> Option<ParseResult<RealValue, E>>
 where
-    S: Stream<Item = u8> + marker::Unpin + PushBackable<Item = <S as Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     /*
     Begin
@@ -197,21 +203,24 @@ where
     let mut depth = 0;
 
     loop {
-        skip_whitespaces(input).await?;
-        // println!("{:?}: {:?} {:?}", expects, postfix, stack);
+        try_result!(skip_whitespaces(input));
+         println!("{:?}: {:?} {:?}", expects, postfix, stack);
 
         // lexical analysis
         let token = match tokenize(input, expects).await? {
-            Ok(tok) => tok,
+            ParseResult::Ok(tok) => tok,
             #[cfg(feature = "optional-value")]
-            Err(Error::UnexpectedByte(b)) if postfix.is_empty() && stack.is_empty() => {
-                // println!("err: {:?}", b as char);
+            ParseResult::Parsing(Error::UnexpectedByte(b)) if postfix.is_empty() && stack.is_empty() => {
+                 println!("err: {:?}", b as char);
                 input.push_back(b);
-                return Some(Ok(RealValue::None));
+                return Some(ParseResult::Ok(RealValue::None));
             }
-            Err(e) => return Some(Err(e)),
+            ParseResult::Parsing(e) => {
+                return Some(ParseResult::Parsing(e))
+            }
+            ParseResult::Input(e) => return Some(ParseResult::Input(e)),
         };
-        // println!("token: {:?}", token);
+        println!("token: {:?}", token);
 
         // grammar analysis
         match token {
@@ -322,7 +331,7 @@ where
     while let Some(stacked) = stack.pop() {
         match stacked {
             Stacked::Operator(op) => postfix.push(op.into()),
-            Stacked::OpenBracket => return Some(Err(Error::InvalidExpression)),
+            Stacked::OpenBracket => return Some(ParseResult::Parsing(Error::InvalidExpression)),
             _ => unreachable!(),
         }
     }
@@ -330,7 +339,7 @@ where
     debug_assert!(stack.is_empty());
 
     // println!("end: {:?} {:?}", postfix, stack);
-    Some(Ok(if postfix.len() == 1 {
+    Some(ParseResult::Ok(if postfix.len() == 1 {
         if let Some(Either::Right(rv)) = postfix.pop() {
             rv.into()
         } else {

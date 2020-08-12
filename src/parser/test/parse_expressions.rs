@@ -24,6 +24,7 @@ g ln [ 2.718281828 ] g round [ 4.8 ] g sqrt [ 4 ]"
     assert_eq!(
         block_on(input),
         &[
+            Ok(GCode::Execute),
             Ok(GCode::Word(
                 'g',
                 Expression::from(vec![Literal::from(90).into(), Operator::Cos.into()]).into()

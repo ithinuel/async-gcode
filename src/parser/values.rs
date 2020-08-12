@@ -7,7 +7,6 @@
 //! crate shows that there's no subtantial benefit in terms of flash size from using the fixed
 //! point arithmetics.
 
-use core::marker;
 use futures::{Stream, StreamExt};
 
 #[cfg(all(
@@ -16,7 +15,12 @@ use futures::{Stream, StreamExt};
 ))]
 use alloc::vec::Vec;
 
-use crate::{stream::PushBackable, types::Literal, utils::skip_whitespaces, Error};
+use crate::{
+    stream::PushBackable,
+    types::{Literal, ParseResult},
+    utils::skip_whitespaces,
+    Error,
+};
 
 #[cfg(not(feature = "parse-expressions"))]
 use crate::types::RealValue;
@@ -24,14 +28,18 @@ use crate::types::RealValue;
 #[cfg(any(feature = "parse-parameters", feature = "parse-expressions"))]
 pub use crate::types::expressions::{Expression, Operator};
 
-pub(crate) async fn parse_number<S>(input: &mut S) -> Option<Result<(u32, u32), Error>>
+pub(crate) async fn parse_number<S, E>(input: &mut S) -> Option<Result<(u32, u32), E>>
 where
-    S: Stream<Item = u8> + marker::Unpin + PushBackable<Item = <S as Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     let mut n = 0;
     let mut order = 1;
     let res = loop {
-        let b = input.next().await?;
+        let b = match input.next().await? {
+            Ok(b) => b,
+            Err(e) => return Some(Err(e)),
+        };
         match b {
             b'0'..=b'9' => {
                 let digit = u32::from(b - b'0');
@@ -44,16 +52,16 @@ where
             }
         }
     };
-
     Some(res)
 }
 
-async fn parse_real_literal<S>(input: &mut S) -> Option<Result<f64, Error>>
+async fn parse_real_literal<S, E>(input: &mut S) -> Option<ParseResult<f64, E>>
 where
-    S: Stream<Item = u8> + marker::Unpin + PushBackable<Item = <S as Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     // extract sign: default to positiv
-    let mut b = input.next().await?;
+    let mut b = try_result!(input.next());
 
     let mut negativ = false;
 
@@ -61,23 +69,19 @@ where
         negativ = b == b'-';
 
         // skip spaces after the sign
-        skip_whitespaces(input).await?;
-        b = input.next().await?;
+        try_result!(skip_whitespaces(input));
+        b = try_result!(input.next());
     }
 
     // parse integer part
     let int = if b != b'.' {
         input.push_back(b);
         // if not a decimal point, there must be an integer
-        match parse_number(input).await? {
-            Ok((v, _)) => {
-                // skip spaces after integer part
-                skip_whitespaces(input).await?;
-                b = input.next().await?;
-                Some(v)
-            }
-            Err(e) => return Some(Err(e)),
-        }
+        let (v, _) = try_result!(parse_number(input));
+        // skip spaces after integer part
+        try_result!(skip_whitespaces(input));
+        b = try_result!(input.next());
+        Some(v)
     } else {
         None
     };
@@ -85,11 +89,8 @@ where
     // parse decimal part: mandatory if integer part is abscent
     let dec = if b == b'.' {
         // skip spaces after decimal point
-        skip_whitespaces(input).await?;
-        match parse_number(input).await? {
-            Ok((decimal, order)) => Some((decimal, order)),
-            Err(e) => return Some(Err(e)),
-        }
+        try_result!(skip_whitespaces(input));
+        Some(try_result!(parse_number(input)))
     } else {
         input.push_back(b);
         None
@@ -103,89 +104,89 @@ where
     //);
 
     let res = if int.is_none() && dec.is_none() {
-        Err(Error::BadNumberFormat)
+        ParseResult::Parsing(Error::BadNumberFormat.into())
     } else {
         let int = int.map(f64::from).unwrap_or(0.);
         let (dec, ord) = dec
             .map(|(dec, ord)| (dec.into(), ord.into()))
             .unwrap_or((0., 1.));
-        Ok((if negativ { -1. } else { 1. }) * (int + dec / ord))
+        ParseResult::Ok((if negativ { -1. } else { 1. }) * (int + dec / ord))
     };
     Some(res)
 }
 
 #[cfg(feature = "string-value")]
-async fn parse_string_literal<S>(input: &mut S) -> Option<Result<String, Error>>
+async fn parse_string_literal<S, E>(input: &mut S) -> Option<ParseResult<String, E>>
 where
-    S: Stream<Item = u8> + marker::Unpin + PushBackable<Item = <S as Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
     // we cannot use take_until(…).collect() because we need to distinguish input's end of stream
     // from take_until(…) end of stream
 
     let mut array = vec![];
     loop {
-        match input.next().await? {
+        match try_result!(input.next()) {
             b'"' => break,
             b'\\' => {
-                array.push(input.next().await?);
+                array.push(try_result!(input.next()));
             }
             b => array.push(b),
         }
     }
 
     match String::from_utf8(array) {
-        Ok(string) => Some(Ok(string)),
-        Err(_) => Some(Err(Error::InvalidUTF8String)),
+        Ok(string) => Some(ParseResult::Ok(string)),
+        Err(_) => Some(Error::InvalidUTF8String.into()),
     }
 }
 
-pub(crate) async fn parse_literal<S>(input: &mut S) -> Option<Result<Literal, Error>>
+pub(crate) async fn parse_literal<S, E>(input: &mut S) -> Option<ParseResult<Literal, E>>
 where
-    S: Stream<Item = u8> + marker::Unpin + PushBackable<Item = <S as Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
-    let b = input.next().await?;
+    let b = try_result!(input.next());
     Some(match b {
         b'+' | b'-' | b'.' | b'0'..=b'9' => {
             input.push_back(b);
-            parse_real_literal(input).await?.map(Literal::from)
+            ParseResult::Ok(Literal::from(try_parse!(parse_real_literal(input))))
         }
         #[cfg(feature = "string-value")]
-        b'"' => parse_string_literal(input).await?.map(Literal::from),
-        _ => Err(Error::UnexpectedByte(b)),
+        b'"' => ParseResult::Ok(Literal::from(try_parse!(parse_string_literal(input)))),
+        _ => Error::UnexpectedByte(b).into(),
     })
 }
 
 #[cfg(not(feature = "parse-expressions"))]
-pub(crate) async fn parse_real_value<S>(input: &mut S) -> Option<Result<RealValue, Error>>
+pub(crate) async fn parse_real_value<S, E>(input: &mut S) -> Option<ParseResult<RealValue, E>>
 where
-    S: Stream<Item = u8> + marker::Unpin + PushBackable<Item = <S as Stream>::Item>,
+    S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::fmt::Debug,
 {
-    let b = input.next().await?;
+    let b = try_result!(input.next());
     // println!("real value: {:?}", b as char);
 
     let res = match b {
         b'+' | b'-' | b'.' | b'0'..=b'9' => {
             input.push_back(b);
-            parse_literal(input).await?.map(RealValue::from)
+            ParseResult::Ok(RealValue::from(try_parse!(parse_literal(input))))
         }
         #[cfg(feature = "string-value")]
         b'"' => {
             input.push_back(b);
-            parse_literal(input).await?.map(RealValue::from)
+            ParseResult::Ok(RealValue::from(try_parse!(parse_literal(input))))
         }
         #[cfg(feature = "parse-parameters")]
         b'#' => {
             let mut n = 1;
             let literal = loop {
-                skip_whitespaces(input).await?;
-                let b = input.next().await?;
+                try_result!(skip_whitespaces(input));
+                let b = try_result!(input.next());
                 if b != b'#' {
                     input.push_back(b);
 
-                    break match parse_literal(input).await? {
-                        Ok(literal) => literal,
-                        Err(e) => return Some(Err(e)),
-                    };
+                    break try_parse!(parse_literal(input));
                 }
                 n += 1;
             };
@@ -193,15 +194,15 @@ where
             let vec: Vec<_> = core::iter::once(literal.into())
                 .chain(core::iter::repeat(Operator::GetParameter.into()).take(n))
                 .collect();
-            Ok(Expression::from(vec).into())
+            ParseResult::Ok(Expression::from(vec).into())
         }
         #[cfg(feature = "optional-value")]
         b => {
             input.push_back(b);
-            Ok(RealValue::None)
+            ParseResult::Ok(RealValue::None)
         }
         #[cfg(not(feature = "optional-value"))]
-        b => Err(Error::UnexpectedByte(b)),
+        b => Error::UnexpectedByte(b).into(),
     };
     Some(res)
 }
