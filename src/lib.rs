@@ -13,7 +13,7 @@
 //! ```
 //! use futures::stream;
 //! use futures_executor::block_on;
-//! use gcode::{Parser, Error};
+//! use async_gcode::{Parser, Error};
 //! let input = r"
 //!    G21 H21. I21.098
 //!    J-21 K-21. L-21.098
