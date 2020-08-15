@@ -22,7 +22,7 @@ in RAM.
 - `optional-value` : Allows to omit in `RealValue` in word and parameter value positions.
   Parameter indices cannot be omitted nor can be literals in expressions.
 - `string-value` : Allows `RealValue` to be a string. Any character preceded with `\` will be
-  used as is (useful for `"`).
+  used as is (useful for `"`, `)` or new line).
 
 ## Design
 ### Constraints

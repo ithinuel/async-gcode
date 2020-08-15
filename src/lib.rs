@@ -36,7 +36,7 @@
 //! });
 //! ```
 //!
-//! ## Erorr management
+//! ## Error management
 //!
 //! On parsing error the `Parser` can no longer trust its input and enters an error recovery state.
 //! No `GCode` or `Error` will be emitted until a new line character (`\n`) is received. Then a
@@ -54,7 +54,7 @@
 //! - `optional-value` : Allows to omit in `RealValue` in word and parameter value positions.
 //!   Parameter indices cannot be omitted nor can be literals in expressions.
 //! - `string-value` : Allows `RealValue` to be a string. Any character preceded with `\` will be
-//!   used as is (useful for `"`).
+//!   used as is (useful for `"`, `)` or new line).
 //!
 //! ## ⚠ Warning
 //!
