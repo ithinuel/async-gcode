@@ -2,10 +2,9 @@
 name = "gcode"
 version = "0.2.0"
 authors = ["Wilfried Chauveau <wilfried.chauveau@ithinuel.me>"]
+description = "An async gcode parser for no_std targets."
 license = "MIT License"
 edition = "2018"
-# documentation = "..."
-# homepage = "..."
 repository = "https://github.com/ithinuel/gcode-rs"
 
 [features]
