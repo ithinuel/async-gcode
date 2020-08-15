@@ -6,9 +6,17 @@
 
 #[cfg(all(
     not(feature = "std"),
-    any(feature = "parse-parameters", feature = "parse-comments")
+    any(
+        feature = "parse-expressions",
+        feature = "parse-parameters",
+        feature = "parse-comments",
+        feature = "string-value"
+    )
 ))]
 extern crate alloc;
+
+#[cfg(all(not(feature = "std"), feature = "parse-comments"))]
+use alloc::string::String;
 
 #[macro_use]
 mod utils;
@@ -39,7 +47,7 @@ pub enum GCode {
     BlockDelete,
     LineNumber(u32),
     #[cfg(feature = "parse-comments")]
-    Comment(std::string::String),
+    Comment(String),
     Word(char, RealValue),
     #[cfg(feature = "parse-parameters")]
     ParameterSet(RealValue, RealValue),

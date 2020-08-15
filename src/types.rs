@@ -1,3 +1,9 @@
+#[cfg(all(
+    not(feature = "std"),
+    any(feature = "parse-comments", feature = "string-value")
+))]
+use alloc::string::String;
+
 #[derive(Debug)]
 pub(crate) enum ParseResult<G, E> {
     Input(E),

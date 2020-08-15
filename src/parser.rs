@@ -12,6 +12,11 @@
 //! real_number ::= ( '+' | '-' )? ( [0-9]+ ( '.' [0-9]* )? | '.' [0-9]+ )
 //! ```
 //!
+#[cfg(all(not(feature = "std"), feature = "parse-comments"))]
+use alloc::string::String;
+#[cfg(all(not(feature = "std"), any(feature = "parse-comments")))]
+use alloc::vec::Vec;
+
 mod values;
 
 #[cfg(feature = "parse-expressions")]

@@ -9,11 +9,8 @@
 
 use futures::{Stream, StreamExt};
 
-#[cfg(all(
-    not(feature = "std"),
-    any(feature = "parse-parameters", feature = "parse-expressions")
-))]
-use alloc::vec::Vec;
+#[cfg(all(not(feature = "std"), feature = "string-value"))]
+use alloc::string::String;
 
 use crate::{
     stream::PushBackable,
@@ -121,10 +118,13 @@ where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
     E: core::fmt::Debug,
 {
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+
     // we cannot use take_until(…).collect() because we need to distinguish input's end of stream
     // from take_until(…) end of stream
 
-    let mut array = vec![];
+    let mut array = Vec::new();
     loop {
         match try_result!(input.next()) {
             b'"' => break,
@@ -179,6 +179,9 @@ where
         }
         #[cfg(feature = "parse-parameters")]
         b'#' => {
+            #[cfg(not(feature = "std"))]
+            use alloc::vec::Vec;
+
             let mut n = 1;
             let literal = loop {
                 try_result!(skip_whitespaces(input));

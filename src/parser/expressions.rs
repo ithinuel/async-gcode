@@ -1,15 +1,21 @@
 use either::Either;
 use futures::stream::{Stream, StreamExt};
+
+#[cfg(all(
+    not(feature = "std"),
+    any(feature = "parse-parameters", feature = "parse-expressions")
+))]
+use alloc::vec::Vec;
+#[cfg(feature = "std")]
 use std::vec::Vec;
 
 use crate::{
     stream::PushBackable,
     types::{
         expressions::{Associativity, ExprItem, Expression, OpType, Operator},
-        Literal, RealValue, ParseResult
+        Literal, ParseResult, RealValue,
     },
     utils::skip_whitespaces,
-    
     Error,
 };
 
@@ -124,7 +130,7 @@ where
                     input.push_back(b);
                     let lit = try_parse!(super::values::parse_literal(input));
                             Token::Literal(lit)
-                    
+
                 }}
             }
         }
@@ -198,29 +204,29 @@ where
     */
 
     let mut expects = Expect::UnaryOrLiteralOrExpr;
-    let mut stack: Vec<Stacked> = vec![];
-    let mut postfix: Vec<ExprItem> = vec![];
+    let mut stack: Vec<Stacked> = Vec::new();
+    let mut postfix: Vec<ExprItem> = Vec::new();
     let mut depth = 0;
 
     loop {
         try_result!(skip_whitespaces(input));
-         println!("{:?}: {:?} {:?}", expects, postfix, stack);
+        //println!("{:?}: {:?} {:?}", expects, postfix, stack);
 
         // lexical analysis
         let token = match tokenize(input, expects).await? {
             ParseResult::Ok(tok) => tok,
             #[cfg(feature = "optional-value")]
-            ParseResult::Parsing(Error::UnexpectedByte(b)) if postfix.is_empty() && stack.is_empty() => {
-                 println!("err: {:?}", b as char);
+            ParseResult::Parsing(Error::UnexpectedByte(b))
+                if postfix.is_empty() && stack.is_empty() =>
+            {
+                //println!("err: {:?}", b as char);
                 input.push_back(b);
                 return Some(ParseResult::Ok(RealValue::None));
             }
-            ParseResult::Parsing(e) => {
-                return Some(ParseResult::Parsing(e))
-            }
+            ParseResult::Parsing(e) => return Some(ParseResult::Parsing(e)),
             ParseResult::Input(e) => return Some(ParseResult::Input(e)),
         };
-        println!("token: {:?}", token);
+        //println!("token: {:?}", token);
 
         // grammar analysis
         match token {
