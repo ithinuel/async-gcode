@@ -19,7 +19,7 @@ fn parse_param_get() {
         &[
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from(-21.098).into(),
                     Operator::GetParameter.into()
                 ])
@@ -38,7 +38,7 @@ fn parse_nested_parameter_get() {
         &[
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from(-21.098).into(),
                     Operator::GetParameter.into(),
                     Operator::GetParameter.into()
@@ -64,12 +64,12 @@ fn parse_param_set_with_nested_param_get() {
     assert_eq!(
         block_on(input),
         &[Ok(GCode::ParameterSet(
-            Expression::from(vec![
+            Expression(vec![
                 Literal::from(23.4).into(),
                 Operator::GetParameter.into()
             ])
             .into(),
-            Expression::from(vec![
+            Expression(vec![
                 Literal::from(-75.8).into(),
                 Operator::GetParameter.into(),
                 Operator::GetParameter.into()
@@ -124,7 +124,7 @@ fn parse_param_with_string_index() {
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from("hello".to_owned()).into(),
                     Operator::GetParameter.into()
                 ])

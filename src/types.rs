@@ -227,35 +227,18 @@ pub(crate) mod expressions {
     }
 
     #[derive(Debug, PartialEq, Clone)]
-    pub struct Expression(pub ExprInner);
+    pub struct Expression(pub(crate) ExprInner);
     impl Expression {
-        pub fn resolve(&self, _cbk: &mut dyn FnMut(Literal) -> Literal) -> Result<Literal, Error> {
+        /// Evaluates the expressions to a single literal. Math error may occur during the
+        /// expression's resolution (e.g. division by 0).
+        ///
+        /// When `parse-parameters` is enabled, this method takes a closure as an argument.
+        /// This closure is used to resolve parameters get.
+        pub fn evaluate(
+            &self,
+            #[cfg(feature = "parse-parameters")] _cbk: &mut dyn FnMut(Literal) -> Literal,
+        ) -> Result<Literal, Error> {
             todo!()
-        }
-    }
-
-    impl Default for Expression {
-        fn default() -> Self {
-            Self(Vec::new())
-        }
-    }
-
-    impl core::ops::Deref for Expression {
-        type Target = ExprInner;
-        fn deref(&self) -> &ExprInner {
-            &self.0
-        }
-    }
-
-    impl core::ops::DerefMut for Expression {
-        fn deref_mut(&mut self) -> &mut ExprInner {
-            &mut self.0
-        }
-    }
-
-    impl From<ExprInner> for Expression {
-        fn from(infix: ExprInner) -> Self {
-            Self(infix)
         }
     }
 
@@ -285,5 +268,11 @@ pub(crate) mod expressions {
         fn from(from: Expression) -> RealValue {
             RealValue::Expression(from)
         }
+    }
+
+    #[cfg(test)]
+    mod test {
+        // test plan for expressions:
+        // TBD
     }
 }

@@ -58,7 +58,6 @@ enum AsyncParserState {
 async fn parse_eol_comment<S, E>(input: &mut S) -> Option<Result<Comment, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     loop {
         let b = match input.next().await? {
@@ -79,7 +78,6 @@ where
 async fn parse_eol_comment<S, E>(input: &mut S) -> Option<ParseResult<Comment, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     let mut v = Vec::new();
     loop {
@@ -101,7 +99,6 @@ where
 async fn parse_inline_comment<S, E>(input: &mut S) -> Option<ParseResult<Comment, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     loop {
         match try_result!(input.next()) {
@@ -119,7 +116,6 @@ where
 async fn parse_inline_comment<S, E>(input: &mut S) -> Option<ParseResult<Comment, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     let mut v = Vec::new();
     loop {
@@ -152,7 +148,6 @@ async fn parse_eol<S, E>(
 ) -> Option<ParseResult<GCode, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin,
-    E: core::fmt::Debug,
 {
     Some(loop {
         let b = try_result!(input.next());
@@ -201,7 +196,7 @@ where
 impl<S, E> Parser<S, E>
 where
     S: Stream<Item = Result<u8, E>> + Unpin,
-    E: From<Error> + core::fmt::Debug,
+    E: From<Error>,
 {
     pub fn new(input: S) -> Self {
         Self {

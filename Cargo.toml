@@ -1,6 +1,6 @@
 [package]
 name = "gcode"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Wilfried Chauveau <wilfried.chauveau@ithinuel.me>"]
 license = "MIT License"
 edition = "2018"
@@ -20,8 +20,6 @@ optional-value = []
 string-value = []
 
 [badges]
-travis-ci = { repository = "ithinuel/gcode-rs", branch = "no_std" }
-codecov = { repository = "ithinuel/gcode-rs", branch = "no_std", service = "github" }
 maintenance = { status = "experimental" }
 
 [dev-dependencies]
@@ -31,6 +29,3 @@ futures-executor = { version = "0.3.5" }
 either = {version = "^1", default-features = false }
 futures = { version = "0.3.5", default-features = false }
 pin-project-lite = { version = "0.1.7" }
-
-#num-rational = {version = "^0", default-features = false}
-#num-traits = { version = "^0", default-features = false}

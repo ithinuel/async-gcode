@@ -28,7 +28,6 @@ pub use crate::types::expressions::{Expression, Operator};
 pub(crate) async fn parse_number<S, E>(input: &mut S) -> Option<Result<(u32, u32), E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     let mut n = 0;
     let mut order = 1;
@@ -55,7 +54,6 @@ where
 async fn parse_real_literal<S, E>(input: &mut S) -> Option<ParseResult<f64, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     // extract sign: default to positiv
     let mut b = try_result!(input.next());
@@ -116,7 +114,6 @@ where
 async fn parse_string_literal<S, E>(input: &mut S) -> Option<ParseResult<String, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
@@ -144,7 +141,6 @@ where
 pub(crate) async fn parse_literal<S, E>(input: &mut S) -> Option<ParseResult<Literal, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     let b = try_result!(input.next());
     Some(match b {
@@ -162,7 +158,6 @@ where
 pub(crate) async fn parse_real_value<S, E>(input: &mut S) -> Option<ParseResult<RealValue, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     let b = try_result!(input.next());
     // println!("real value: {:?}", b as char);
@@ -197,7 +192,7 @@ where
             let vec: Vec<_> = core::iter::once(literal.into())
                 .chain(core::iter::repeat(Operator::GetParameter.into()).take(n))
                 .collect();
-            ParseResult::Ok(Expression::from(vec).into())
+            ParseResult::Ok(Expression(vec).into())
         }
         #[cfg(feature = "optional-value")]
         b => {

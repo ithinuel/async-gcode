@@ -1,6 +1,7 @@
 use crate::stream::PushBackable;
 use futures::{Stream, StreamExt};
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! try_parse {
     ($input:expr) => {
@@ -12,6 +13,7 @@ macro_rules! try_parse {
     };
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! try_result {
     ($input:expr) => {
@@ -25,7 +27,6 @@ macro_rules! try_result {
 pub(crate) async fn skip_whitespaces<S, E>(input: &mut S) -> Option<Result<(), E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     loop {
         let b = match input.next().await? {

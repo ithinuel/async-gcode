@@ -6,12 +6,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 ### Added
-- Travis CI build script.
+- `Readme.md`, `License` and this `Changelog.md`.
+- Async-await no-std friendly implementation.
+- Add parsing test suite.
+- Command line interface demo.
 - GCode example file.
-- This change log.
-- Readme.md
-- no-std friendly implementation
+- Expressions and parameters support.
+- Add Github actions.
+- Documentation of non-obvious, publicly exposed types & methods.
 
 ### Changed
 
-[Unreleased]: https://github.com/ithinuel/gcode-rs/tree/no_std
+- —
+
+<!-- footnote/links -->
+[Unreleased]: https://github.com/ithinuel/gcode-rs/tree/master

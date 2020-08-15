@@ -94,7 +94,6 @@ macro_rules! match_operator {
 async fn tokenize<S, E>(input: &mut S, expect: Expect) -> Option<ParseResult<Token, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     let b = match input.next().await? {
         Ok(b) => b,
@@ -170,7 +169,6 @@ where
 pub(crate) async fn parse_real_value<S, E>(input: &mut S) -> Option<ParseResult<RealValue, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
-    E: core::fmt::Debug,
 {
     /*
     Begin
@@ -352,6 +350,6 @@ where
             unreachable!()
         }
     } else {
-        Expression::from(postfix).into()
+        Expression(postfix).into()
     }))
 }

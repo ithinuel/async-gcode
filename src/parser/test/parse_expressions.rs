@@ -27,28 +27,28 @@ g ln [ 2.718281828 ] g round [ 4.8 ] g sqrt [ 4 ]"
             Ok(GCode::Execute),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(90).into(), Operator::Cos.into()]).into()
+                Expression(vec![Literal::from(90).into(), Operator::Cos.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(90).into(), Operator::Sin.into()]).into()
+                Expression(vec![Literal::from(90).into(), Operator::Sin.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(90).into(), Operator::Tan.into()]).into()
+                Expression(vec![Literal::from(90).into(), Operator::Tan.into()]).into()
             )),
             Ok(GCode::Execute),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(0.5).into(), Operator::ACos.into()]).into()
+                Expression(vec![Literal::from(0.5).into(), Operator::ACos.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(-0.5).into(), Operator::ASin.into()]).into()
+                Expression(vec![Literal::from(-0.5).into(), Operator::ASin.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from(2.3).into(),
                     Literal::from(28).into(),
                     Operator::ATan.into()
@@ -58,33 +58,32 @@ g ln [ 2.718281828 ] g round [ 4.8 ] g sqrt [ 4 ]"
             Ok(GCode::Execute),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(-0.3).into(), Operator::Abs.into()]).into()
+                Expression(vec![Literal::from(-0.3).into(), Operator::Abs.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(32).into(), Operator::Exp.into()]).into()
+                Expression(vec![Literal::from(32).into(), Operator::Exp.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(5.8).into(), Operator::Fix.into()]).into()
+                Expression(vec![Literal::from(5.8).into(), Operator::Fix.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(4.3).into(), Operator::Fup.into()]).into()
+                Expression(vec![Literal::from(4.3).into(), Operator::Fup.into()]).into()
             )),
             Ok(GCode::Execute),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(2.718281828).into(), Operator::Ln.into()])
-                    .into()
+                Expression(vec![Literal::from(2.718281828).into(), Operator::Ln.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(4.8).into(), Operator::Round.into()]).into()
+                Expression(vec![Literal::from(4.8).into(), Operator::Round.into()]).into()
             )),
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![Literal::from(4).into(), Operator::Sqrt.into()]).into()
+                Expression(vec![Literal::from(4).into(), Operator::Sqrt.into()]).into()
             )),
         ]
     );
@@ -97,7 +96,7 @@ fn parse_binary_operator_with_appropriate_precedence() {
         block_on(input),
         &[Ok(GCode::Word(
             'g',
-            Expression::from(vec![
+            Expression(vec![
                 Literal::from(2).into(),
                 Literal::from(9).into(),
                 Literal::from(7).into(),
@@ -126,7 +125,7 @@ fn parse_addition_of_negative_numbers() {
         block_on(input),
         &[Ok(GCode::Word(
             'g',
-            Expression::from(vec![
+            Expression(vec![
                 Literal::from(-2).into(),
                 Literal::from(-9).into(),
                 Operator::Add.into(),
@@ -143,7 +142,7 @@ fn unary_have_higher_precedence_on_power_operator() {
         block_on(input),
         &[Ok(GCode::Word(
             'g',
-            Expression::from(vec![
+            Expression(vec![
                 Literal::from(90).into(),
                 Operator::Cos.into(),
                 Literal::from(2).into(),
@@ -161,7 +160,7 @@ fn operator_name_are_case_insensitive() {
         block_on(input),
         &[Ok(GCode::Word(
             'g',
-            Expression::from(vec![
+            Expression(vec![
                 Literal::from(90).into(),
                 Operator::Cos.into(),
                 Literal::from(2).into(),
@@ -184,7 +183,7 @@ fn parse_expressions_with_parameter_get() {
         &[
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from(32).into(),
                     Literal::from(25).into(),
                     Operator::Add.into(),
@@ -201,7 +200,7 @@ fn parse_expressions_with_parameter_get() {
         &[
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from(32).into(),
                     Literal::from(-25).into(),
                     Operator::Add.into(),
@@ -221,7 +220,7 @@ fn parse_expressions_with_parameter_get() {
         &[
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from(90).into(),
                     Operator::Cos.into(),
                     Operator::GetParameter.into(),
@@ -237,7 +236,7 @@ fn parse_expressions_with_parameter_get() {
         &[
             Ok(GCode::Word(
                 'g',
-                Expression::from(vec![
+                Expression(vec![
                     Literal::from(180).into(),
                     Literal::from(2).into(),
                     Operator::Divide.into(),

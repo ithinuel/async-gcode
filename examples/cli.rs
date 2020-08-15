@@ -1,6 +1,6 @@
-use futures::{future, stream, StreamExt};
+use futures::stream;
 use futures_executor::block_on;
-use std::io::{stdin, Read};
+use std::io::Read;
 
 use gcode::Parser;
 
@@ -17,18 +17,15 @@ impl From<gcode::Error> for Error {
 fn main() {
     block_on(async {
         let mut parser = Parser::new(stream::iter(
-            stdin().bytes().map(|res| res.map_err(Error::Io)),
+            std::io::stdin().bytes().map(|res| res.map_err(Error::Io)),
         ));
 
-        stream::unfold(
-            &mut parser,
-            |p| async move { p.next().await.map(|w| (w, p)) },
-        )
-        .for_each(|gcode| {
-            println!("{:?}", gcode);
-            future::ready(())
-        })
-        .await;
-        println!("Done");
+        loop {
+            if let Some(res) = parser.next().await {
+                println!("{:?}", res);
+            } else {
+                break;
+            }
+        }
     });
 }
