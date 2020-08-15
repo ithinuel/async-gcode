@@ -36,6 +36,12 @@
 //! });
 //! ```
 //!
+//! ## Erorr management
+//!
+//! On parsing error the `Parser` can no longer trust its input and enters an error recovery state.
+//! No `GCode` or `Error` will be emitted until a new line character (`\n`) is received. Then a
+//! `GCode::Execute` is emitted and the parser restarts in a reliable known state.
+//!
 //! ## ⚙ Features
 //! - `std` : Enabled by default. Allows for the use of dynamic allocation.
 //! - `parse-comments` : enables the parser to return `GCode::Comment(String)`; requires an allocator.
@@ -58,6 +64,14 @@
 //!
 //! ## Note for future development
 //! It might be interesting to have a look at ISO 6983 and/or ISO 14649.
+//!
+//! During development fixed arithmetics was considered to be made available as an alternative to
+//! the floating point arithmetics especially for small target. After investigation, it does not
+//! seem to be a significant gain for the precision required by the gcode standard.
+//!
+//! Ideally all arithmetics triggered by a theoritically valid input should be caught and not
+//! trigger a panic. For an excessive  number of digit in a number may exceed the capacity of the
+//! variable used internally.
 //!
 //! [RS274/NGC interpreter version 3]: https://www.nist.gov/publications/nist-rs274ngc-interpreter-version-3?pub_id=823374
 #![cfg_attr(not(feature = "std"), no_std)]
