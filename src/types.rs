@@ -106,18 +106,18 @@ pub(crate) mod expressions {
     pub(crate) type ExprItem = Either<Operator, Literal>;
     pub(crate) type ExprInner = Vec<ExprItem>;
 
-    #[derive(Debug, PartialEq, Clone, Copy)]
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub enum OpType {
         Unary,
         Binary,
     }
-    #[derive(Debug, PartialEq, Clone, Copy)]
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub enum Associativity {
         Left,
         #[cfg(feature = "parse-parameters")]
         Right,
     }
-    #[derive(Debug, Clone, Copy, PartialOrd, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Eq)]
     pub enum Precedence {
         Group1,
         Group2,
@@ -127,7 +127,7 @@ pub(crate) mod expressions {
         Group5,
     }
 
-    #[derive(Debug, PartialEq, Clone, Copy)]
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub enum Operator {
         // Binary operators
         Add,

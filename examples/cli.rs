@@ -18,12 +18,8 @@ fn main() {
             std::io::stdin().bytes().map(|res| res.map_err(Error::Io)),
         ));
 
-        loop {
-            if let Some(res) = parser.next().await {
-                println!("{:?}", res);
-            } else {
-                break;
-            }
+        while let Some(res) = parser.next().await {
+            println!("{:?}", res);
         }
     });
 }

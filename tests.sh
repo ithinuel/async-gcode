@@ -3,12 +3,12 @@ set -e
 
 function run_test() {
     echo $1
-    cargo clippy --features $2
+    cargo clippy --examples --features $2 -- -Dwarnings
     cargo build --color=always --release --no-default-features \
             --features $2 \
-            --target thumbv7em-none-eabihf \
-            -Z features=dev_dep
+            --target thumbv7em-none-eabihf
     cargo test --color=always --features $2
+    cargo clean
 }
 
 cargo clippy

@@ -272,14 +272,14 @@ where
                         let param_id = match try_await!(parse_real_value(&mut self.input)) {
                             #[cfg(feature = "optional-value")]
                             crate::RealValue::None => {
-                                let b = try_await_result!((&mut self.input).next());
+                                let b = try_await_result!(self.input.next());
                                 break Err(Error::UnexpectedByte(b).into());
                             }
                             id => id,
                         };
                         // println!("param_id: {:?}", param_id);
                         try_await_result!(skip_whitespaces(&mut self.input));
-                        let b = try_await_result!((&mut self.input).next());
+                        let b = try_await_result!(self.input.next());
                         if b'=' != b {
                             break Err(Error::UnexpectedByte(b).into());
                         }

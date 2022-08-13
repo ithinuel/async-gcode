@@ -105,7 +105,7 @@ pub use types::RealValue;
 #[cfg(any(feature = "parse-expressions", feature = "parse-parameters"))]
 pub use types::expressions::Expression;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Error {
     /// Error no the gcode syntax
     UnexpectedByte(u8),
