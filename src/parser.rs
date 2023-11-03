@@ -237,10 +237,10 @@ where
                     b'n' => {
                         try_await_result!(skip_whitespaces(&mut self.input));
                         let (n, ord) = try_await_result!(parse_number(&mut self.input));
-                        break if ord == 1 {
+                        break if ord == 0 {
                             let b = try_await_result!(self.input.next());
                             Err(Error::UnexpectedByte(b).into())
-                        } else if ord > 10000 {
+                        } else if ord > 5 {
                             Err(Error::NumberOverflow.into())
                         } else {
                             self.state = AsyncParserState::Segment;

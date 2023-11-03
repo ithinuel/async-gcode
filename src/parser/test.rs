@@ -5,6 +5,8 @@ use super::{Error, GCode, Parser, StreamExt};
 #[cfg(feature = "optional-value")]
 use crate::types::RealValue;
 
+use crate::DecimalRepr;
+
 #[cfg(feature = "parse-checksum")]
 mod parse_checksum;
 #[cfg(feature = "parse-expressions")]
@@ -206,7 +208,8 @@ fn word_with_number() {
             Ok(GCode::Word('r', (-0.098).into())),
             Ok(GCode::Word('s', (0.098).into())),
             Ok(GCode::Execute),
-            Ok(GCode::Word('t', (-21.33).into()))
+            // avoid precision loss with f64 conversion in this case
+            Ok(GCode::Word('t', DecimalRepr::new(-2133, 2).into())),
         ]
     );
 }

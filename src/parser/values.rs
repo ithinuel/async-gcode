@@ -12,12 +12,7 @@ use futures::{Stream, StreamExt};
 #[cfg(all(not(feature = "std"), feature = "string-value"))]
 use alloc::string::String;
 
-use crate::{
-    stream::PushBackable,
-    types::{Literal, ParseResult},
-    utils::skip_whitespaces,
-    Error,
-};
+use crate::{stream::PushBackable, types::{Literal, ParseResult}, utils::skip_whitespaces, Error, DecimalRepr};
 
 #[cfg(not(feature = "parse-expressions"))]
 use crate::types::RealValue;
@@ -25,22 +20,23 @@ use crate::types::RealValue;
 #[cfg(any(feature = "parse-parameters", feature = "parse-expressions"))]
 pub use crate::types::expressions::{Expression, Operator};
 
-pub(crate) async fn parse_number<S, E>(input: &mut S) -> Option<Result<(u32, u32), E>>
+pub(crate) async fn parse_number<S, E>(input: &mut S) -> Option<Result<(u32, u8), E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
 {
     let mut n = 0;
-    let mut order = 1;
+    let mut order = 0;
     let res = loop {
         let b = match input.next().await? {
             Ok(b) => b,
-            Err(e) => return Some(Err(e)),
+            Err(e) => {
+                return Some(Err(e))},
         };
         match b {
             b'0'..=b'9' => {
                 let digit = u32::from(b - b'0');
                 n = n * 10 + digit;
-                order *= 10;
+                order +=1;
             }
             _ => {
                 input.push_back(b);
@@ -51,18 +47,16 @@ where
     Some(res)
 }
 
-async fn parse_real_literal<S, E>(input: &mut S) -> Option<ParseResult<f64, E>>
+async fn parse_real_literal<S, E>(input: &mut S) -> Option<ParseResult<DecimalRepr, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
 {
     // extract sign: default to positiv
     let mut b = try_result!(input.next());
-
     let mut negativ = false;
 
     if b == b'-' || b == b'+' {
         negativ = b == b'-';
-
         // skip spaces after the sign
         try_result!(skip_whitespaces(input));
         b = try_result!(input.next());
@@ -91,21 +85,21 @@ where
         None
     };
 
-    //println!(
-    //"literal done: {} {:?} {:?}",
-    //if negativ { '-' } else { '+' },
-    //int,
-    //dec
-    //);
+    #[cfg(feature = "defmt")]
+    info!("parse_real_literal_alt: int: {}, dec: {}", int, dec);
 
     let res = if int.is_none() && dec.is_none() {
         ParseResult::Parsing(Error::BadNumberFormat.into())
     } else {
-        let int = int.map(f64::from).unwrap_or(0.);
-        let (dec, ord) = dec
-            .map(|(dec, ord)| (dec.into(), ord.into()))
-            .unwrap_or((0., 1.));
-        ParseResult::Ok((if negativ { -1. } else { 1. }) * (int + dec / ord))
+        let sign = if negativ { -1i32 } else { 1i32 };
+        let int = int.unwrap_or(0);
+        let (n, ord) = dec.unwrap_or((0u32,0u8));
+        let scaler = u32::pow(10, ord as u32);
+        ParseResult::Ok(
+            DecimalRepr::new(
+                sign * (((int  * scaler) + n) as i32), ord
+            )
+        )
     };
     Some(res)
 }

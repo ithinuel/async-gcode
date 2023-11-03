@@ -102,6 +102,8 @@ pub use parser::Parser;
 pub use types::Literal;
 pub use types::RealValue;
 
+pub use types::DecimalRepr;
+
 #[cfg(any(feature = "parse-expressions", feature = "parse-parameters"))]
 pub use types::expressions::Expression;
 
