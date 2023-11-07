@@ -192,24 +192,24 @@ fn word_with_number() {
         block_on(input),
         &[
             Ok(GCode::Execute),
-            Ok(GCode::Word('g', (21.0).into())),
-            Ok(GCode::Word('h', (21.0).into())),
-            Ok(GCode::Word('i', (21.098).into())),
+            Ok(GCode::Word('g', (21.0).try_into().unwrap())),
+            Ok(GCode::Word('h', (21.0).try_into().unwrap())),
+            Ok(GCode::Word('i', (21.098).try_into().unwrap())),
             Ok(GCode::Execute),
-            Ok(GCode::Word('j', (-21.0).into())),
-            Ok(GCode::Word('k', (-21.0).into())),
-            Ok(GCode::Word('l', (-21.098).into())),
+            Ok(GCode::Word('j', (-21.0).try_into().unwrap())),
+            Ok(GCode::Word('k', (-21.0).try_into().unwrap())),
+            Ok(GCode::Word('l', (-21.098).try_into().unwrap())),
             Ok(GCode::Execute),
-            Ok(GCode::Word('m', (21.0).into())),
-            Ok(GCode::Word('n', (21.0).into())),
-            Ok(GCode::Word('p', (21.098).into())),
+            Ok(GCode::Word('m', (21.0).try_into().unwrap())),
+            Ok(GCode::Word('n', (21.0).try_into().unwrap())),
+            Ok(GCode::Word('p', (21.098).try_into().unwrap())),
             Ok(GCode::Execute),
-            Ok(GCode::Word('q', (0.098).into())),
-            Ok(GCode::Word('r', (-0.098).into())),
-            Ok(GCode::Word('s', (0.098).into())),
+            Ok(GCode::Word('q', (0.098).try_into().unwrap())),
+            Ok(GCode::Word('r', (-0.098).try_into().unwrap())),
+            Ok(GCode::Word('s', (0.098).try_into().unwrap())),
             Ok(GCode::Execute),
             // avoid precision loss with f64 conversion in this case
-            Ok(GCode::Word('t', DecimalRepr::new(-2133, 2).into())),
+            Ok(GCode::Word('t', DecimalRepr::new(-2133, 2).try_into().unwrap())),
         ]
     );
 }
@@ -221,11 +221,11 @@ fn word_may_not_have_a_value() {
     assert_eq!(
         block_on(input),
         &[
-            Ok(GCode::Word('g', (75.0).into())),
+            Ok(GCode::Word('g', (75.0).try_into().unwrap())),
             Ok(GCode::Word('z', RealValue::None)),
-            Ok(GCode::Word('t', (48.0).into())),
+            Ok(GCode::Word('t', (48.0).try_into().unwrap())),
             Ok(GCode::Word('s', RealValue::None)),
-            Ok(GCode::Word('p', (0.3).into())),
+            Ok(GCode::Word('p', (0.3).try_into().unwrap())),
             Ok(GCode::Execute)
         ]
     );
@@ -240,7 +240,7 @@ fn word_may_not_have_a_value_but_ambiguous_sequence_will_error() {
     assert_eq!(
         block_on(input),
         &[
-            Ok(GCode::Word('g', (75.0).into())),
+            Ok(GCode::Word('g', (75.0).try_into().unwrap())),
             Ok(GCode::Word('z', RealValue::None)),
             Err(Error::UnexpectedByte(b'4')),
             Ok(GCode::Execute)

@@ -5,4 +5,3 @@ kcov*
 tags
 **/*.rustfmt
 Cargo.lock
-.idea

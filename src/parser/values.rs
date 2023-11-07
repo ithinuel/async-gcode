@@ -85,9 +85,6 @@ where
         None
     };
 
-    #[cfg(feature = "defmt")]
-    info!("parse_real_literal_alt: int: {}, dec: {}", int, dec);
-
     let res = if int.is_none() && dec.is_none() {
         ParseResult::Parsing(Error::BadNumberFormat.into())
     } else {

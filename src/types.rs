@@ -3,6 +3,8 @@
     any(feature = "parse-comments", feature = "string-value")
 ))]
 use alloc::string::String;
+#[cfg(feature = "float-f64")]
+use core::f64;
 
 #[derive(Debug)]
 pub(crate) enum ParseResult<G, E> {
@@ -128,20 +130,41 @@ impl From<DecimalRepr> for Literal {
         Self::RealNumber(from)
     }
 }
+
 impl From<i32> for Literal {
     fn from(from: i32) -> Self {
         Self::RealNumber(DecimalRepr::new(from, 0))
     }
 }
-impl From<u32> for Literal {
-    fn from(from: u32) -> Self {
-        Self::RealNumber(DecimalRepr::new(from  as i32, 0))
+impl TryFrom<u32> for Literal {
+
+    type Error = crate::Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        Ok(Self::RealNumber(
+            DecimalRepr::new(
+                i32::try_from(value)
+                    .map_err(|_| crate::Error::InvalidNumberConversion)?, 0
+            )
+        ))
     }
 }
 #[cfg(feature = "float-f64")]
-impl From<f64> for Literal {
-    fn from(from: f64) -> Self {
-        Self::RealNumber(DecimalRepr::from_f64(from))
+impl TryFrom<f64> for Literal {
+    type Error = crate::Error;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        // As parser constraints: 5 decimals max
+        let scaled_value = value * 100000.0;
+        if scaled_value > f64::from(i32::MAX) {
+            Err(crate::Error::InvalidNumberConversion)
+        } else if scaled_value < f64::from(i32::MIN) {
+            Err(crate::Error::InvalidNumberConversion)
+        } else {
+            Ok(Self::RealNumber(
+                DecimalRepr::new(scaled_value as i32, 5)
+            ))
+        }
     }
 }
 
@@ -168,6 +191,15 @@ impl Default for RealValue {
 impl<T: Into<Literal>> From<T> for RealValue {
     fn from(from: T) -> Self {
         RealValue::Literal(from.into())
+    }
+}
+
+#[cfg(feature = "float-f64")]
+impl TryFrom<f64> for RealValue {
+    type Error = crate::Error;
+
+    fn try_from(from: f64) -> Result<Self, Self::Error> {
+        Ok(RealValue::Literal(from.try_into()?))
     }
 }
 

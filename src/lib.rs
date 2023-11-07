@@ -112,8 +112,11 @@ pub enum Error {
     /// Error no the gcode syntax
     UnexpectedByte(u8),
 
-    /// The parsed number excedded the expected range.
+    /// The parsed number exceeded the expected range.
     NumberOverflow,
+
+    /// Incompatible number conversions.
+    InvalidNumberConversion,
 
     /// Format error during number parsing. Typically a dot without digits (at least one is
     /// required).
