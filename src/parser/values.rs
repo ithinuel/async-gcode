@@ -23,6 +23,7 @@ pub use crate::types::expressions::{Expression, Operator};
 pub(crate) async fn parse_number<S, E>(input: &mut S) -> Option<Result<(u32, u8), E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::convert::From<Error>,
 {
     let mut n = 0;
     let mut order = 0;
@@ -35,6 +36,9 @@ where
         match b {
             b'0'..=b'9' => {
                 let digit = u32::from(b - b'0');
+                if order > 8 {
+                    return Some(Err(crate::Error::NumberOverflow.into()));
+                }
                 n = n * 10 + digit;
                 order +=1;
             }
@@ -50,6 +54,8 @@ where
 async fn parse_real_literal<S, E>(input: &mut S) -> Option<ParseResult<DecimalRepr, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::convert::From<Error>,
+
 {
     // extract sign: default to positiv
     let mut b = try_result!(input.next());
@@ -132,6 +138,7 @@ where
 pub(crate) async fn parse_literal<S, E>(input: &mut S) -> Option<ParseResult<Literal, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::convert::From<Error>,
 {
     let b = try_result!(input.next());
     Some(match b {
@@ -149,6 +156,7 @@ where
 pub(crate) async fn parse_real_value<S, E>(input: &mut S) -> Option<ParseResult<RealValue, E>>
 where
     S: Stream<Item = Result<u8, E>> + Unpin + PushBackable<Item = u8>,
+    E: core::convert::From<Error>,
 {
     let b = try_result!(input.next());
     // println!("real value: {:?}", b as char);
