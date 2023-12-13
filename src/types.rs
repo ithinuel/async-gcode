@@ -3,6 +3,8 @@
     any(feature = "parse-comments", feature = "string-value")
 ))]
 use alloc::string::String;
+#[cfg(feature = "float-f64")]
+use core::f64;
 
 #[derive(Debug)]
 pub(crate) enum ParseResult<G, E> {
@@ -30,16 +32,86 @@ pub type Comment = ();
 #[cfg(feature = "parse-comments")]
 pub type Comment = String;
 
+#[derive(Debug, Clone, Copy)]
+pub struct DecimalRepr {
+    integer: i32,
+    scale: u8,
+}
+
+impl PartialEq for DecimalRepr {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        if self.scale == other.scale {
+            self.integer == other.integer
+        }
+        else if self.scale > other.scale {
+            self.integer == (other.integer * 10i32.pow((self.scale - other.scale) as u32))
+        }
+        else {
+            other.integer == (self.integer * 10i32.pow((other.scale - self.scale) as u32))
+        }
+    }
+}
+
+impl Default for DecimalRepr {
+    fn default() -> Self {
+        Self {
+            integer: 0i32,
+            scale: 0u8,
+        }
+    }
+}
+
+impl DecimalRepr {
+    pub const fn new(integer: i32, scale: u8) -> DecimalRepr {
+        DecimalRepr {
+            integer,
+            scale,
+        }
+    }
+    #[cfg(feature = "float-f64")]
+    /// Convert from f64 with a maximum of 8 decimal positions
+    pub fn from_f64(number: f64) -> DecimalRepr {
+        let integer =  (number * 100000000.0f64).trunc() as i32;
+        DecimalRepr {
+            integer,
+            scale: 8,
+        }
+    }
+    #[cfg(feature = "float-f64")]
+    pub fn to_f64(&self ) -> f64 {
+        self.integer as f64 / (10u64.pow(self.scale as u32) as f64)
+    }
+
+    #[inline]
+    pub fn integer_part(&self) -> i32 {
+        self.integer
+    }
+
+    #[inline]
+    pub fn scale(&self) -> u8 {
+        self.scale
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
-    RealNumber(f64),
+    RealNumber(DecimalRepr),
     #[cfg(feature = "string-value")]
     String(String),
 }
 impl Literal {
-    pub fn as_real_number(&self) -> Option<f64> {
+    pub fn as_decimal(&self) -> Option<DecimalRepr> {
         match self {
             Literal::RealNumber(rn) => Some(*rn),
+            #[cfg(feature = "string-value")]
+            _ => None,
+        }
+    }
+    #[cfg(feature = "float-f64")]
+    pub fn as_real_number(&self) -> Option<f64> {
+        match self {
+            Literal::RealNumber(rn) => Some(rn.to_f64()),
             #[cfg(feature = "string-value")]
             _ => None,
         }
@@ -52,19 +124,47 @@ impl Literal {
         }
     }
 }
+
+impl From<DecimalRepr> for Literal {
+    fn from(from: DecimalRepr) -> Self {
+        Self::RealNumber(from)
+    }
+}
+
 impl From<i32> for Literal {
     fn from(from: i32) -> Self {
-        Self::RealNumber(from as f64)
+        Self::RealNumber(DecimalRepr::new(from, 0))
     }
 }
-impl From<u32> for Literal {
-    fn from(from: u32) -> Self {
-        Self::RealNumber(from as f64)
+impl TryFrom<u32> for Literal {
+
+    type Error = crate::Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        Ok(Self::RealNumber(
+            DecimalRepr::new(
+                i32::try_from(value)
+                    .map_err(|_| crate::Error::InvalidNumberConversion)?, 0
+            )
+        ))
     }
 }
-impl From<f64> for Literal {
-    fn from(from: f64) -> Self {
-        Self::RealNumber(from)
+#[cfg(feature = "float-f64")]
+impl TryFrom<f64> for Literal {
+    type Error = crate::Error;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        // As parser constraints: 5 decimals max
+        let scaled_value = value * 100000.0;
+        if scaled_value > f64::from(i32::MAX) {
+            Err(crate::Error::InvalidNumberConversion)
+        } else if scaled_value < f64::from(i32::MIN) {
+            Err(crate::Error::InvalidNumberConversion)
+        } else {
+            Ok(Self::RealNumber(
+                DecimalRepr::new(scaled_value as i32, 5)
+            ))
+        }
     }
 }
 
@@ -85,12 +185,21 @@ pub enum RealValue {
 }
 impl Default for RealValue {
     fn default() -> Self {
-        Self::from(0.)
+        DecimalRepr::new(0, 0).into()
     }
 }
 impl<T: Into<Literal>> From<T> for RealValue {
     fn from(from: T) -> Self {
         RealValue::Literal(from.into())
+    }
+}
+
+#[cfg(feature = "float-f64")]
+impl TryFrom<f64> for RealValue {
+    type Error = crate::Error;
+
+    fn try_from(from: f64) -> Result<Self, Self::Error> {
+        Ok(RealValue::Literal(from.try_into()?))
     }
 }
 

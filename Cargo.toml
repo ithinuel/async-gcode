@@ -11,7 +11,7 @@ categories = ["asynchronous", "embedded", "no-std", "parsing"]
 
 [features]
 default = ["std"]
-std = []
+std = ["float-f64"]
 parse-comments = []
 parse-trailing-comment = []
 parse-checksum = []
@@ -19,6 +19,7 @@ parse-parameters = []
 parse-expressions = []
 optional-value = []
 string-value = []
+float-f64 = []
 
 [badges]
 maintenance = { status = "experimental" }

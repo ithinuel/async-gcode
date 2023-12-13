@@ -102,6 +102,8 @@ pub use parser::Parser;
 pub use types::Literal;
 pub use types::RealValue;
 
+pub use types::DecimalRepr;
+
 #[cfg(any(feature = "parse-expressions", feature = "parse-parameters"))]
 pub use types::expressions::Expression;
 
@@ -110,8 +112,11 @@ pub enum Error {
     /// Error no the gcode syntax
     UnexpectedByte(u8),
 
-    /// The parsed number excedded the expected range.
+    /// The parsed number exceeded the expected range.
     NumberOverflow,
+
+    /// Incompatible number conversions.
+    InvalidNumberConversion,
 
     /// Format error during number parsing. Typically a dot without digits (at least one is
     /// required).
